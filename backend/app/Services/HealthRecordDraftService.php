@@ -14,6 +14,7 @@ use Closure;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -252,7 +253,7 @@ class HealthRecordDraftService
     {
         return $this->withDraftIdentity($user, $publicId, function () use ($user, $publicId, $data) {
             return $this->updateWithinIdentity($user, $publicId, $data);
-        }, $data['consultation_uuid'] ?? null);
+        }, $data['consultation_uuid'] ?? null, requireMatching: $user->isRhu());
     }
 
     /** Read only the authorized identity before acquiring any domain lock. */
@@ -271,10 +272,14 @@ class HealthRecordDraftService
     {
         return DB::transaction(function () use ($user, $publicId, $data) {
             $draft = $this->loadOwnedActive($user, $publicId);
-            $before = $this->payload($draft);
             abort_unless((int) $draft->patient_id === (int) $data['patient_id'], 422, 'A consultation cannot be reassigned to another patient.');
             $this->assertEditor($user, $draft);
-            $patient = $this->authorizedPatient($user, (int) $data['patient_id'], $draft->rhu_visit_id);
+            $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
+            if ($user->isRhu()) {
+                abort_unless((int) $draft->rhu_visit_id === (int) ($data['rhu_visit_id'] ?? 0), 422, 'A consultation cannot be reassigned to another visit.');
+                $this->authorizedRhuVisit($user, $patient, $draft->rhu_visit_id, $data['consultation_uuid'] ?? $draft->consultation_uuid);
+            }
+            $before = $this->payload($draft);
             $payload = $this->payloads->sanitize($data['payload']);
             $this->authorizeBackgroundUpdate($user, $payload);
             if (! PatientBackground::canAccess($user) && isset($before['backgroundUpdate'])) {
@@ -386,16 +391,30 @@ class HealthRecordDraftService
             $plaintext = Crypt::decryptString((string) $draft->encrypted_payload);
             $decoded = json_decode($plaintext, true, flags: JSON_THROW_ON_ERROR);
 
-            return $this->payloads->sanitizeStored(is_array($decoded) ? $decoded : []);
+            if (! is_array($decoded)) {
+                throw new \UnexpectedValueException('The draft payload is not an object.');
+            }
         } catch (Throwable $exception) {
             Log::warning('Health-record draft decryption failed.', [
                 'draft_public_id' => $draft->public_id,
-                'owner_user_id' => $draft->owner_user_id,
-                'barangay_health_center_id' => $draft->barangay_health_center_id,
                 'exception_type' => $exception::class,
             ]);
 
             abort(500, 'Unable to open this draft safely. Please contact an administrator.');
+        }
+
+        try {
+            return $this->payloads->sanitizeStored($decoded);
+        } catch (ValidationException $exception) {
+            Log::warning('Stored health-record draft validation failed.', [
+                'draft_public_id' => $draft->public_id,
+                'fields' => array_keys($exception->errors()),
+            ]);
+
+            throw new HttpResponseException(response()->json([
+                'message' => 'Some saved fields could not be restored. Contact an administrator for help recovering this draft.',
+                'code' => 'DRAFT_STORED_PAYLOAD_UNSUPPORTED',
+            ], 409));
         }
     }
 
@@ -603,7 +622,12 @@ class HealthRecordDraftService
 
     private function assertEditor(User $user, HealthRecordDraft $draft, bool $encoding = true): void
     {
-        abort_unless((int) $draft->editor_user_id === (int) $user->id && $draft->editor_expires_at?->isFuture(), 409, 'Your editing session ended or was taken over. Reopen the consultation.');
+        if ((int) $draft->editor_user_id !== (int) $user->id || ! $draft->editor_expires_at?->isFuture()) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'Your editing session ended or was taken over. Reload the saved draft before continuing.',
+                'code' => 'DRAFT_EDITOR_LEASE_ENDED',
+            ], 409));
+        }
         if ($encoding && $draft->review_state === 'review') {
             ActionPermissions::ensure($user, 'consultations.finalize');
             ActionPermissions::ensure($user, 'records.correct');
@@ -615,6 +639,7 @@ class HealthRecordDraftService
         return [
             'id' => $draft->public_id,
             'consultation_uuid' => $draft->consultation_uuid,
+            'rhu_visit_id' => $draft->rhu_visit_id,
             'patient' => [
                 'id' => $draft->patient?->id,
                 'label' => $draft->patient?->full_name ?: 'Patient',

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\BarangayHealthCenter;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
+use App\Models\HealthRecordDraft;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PatientCondition;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Services\ReferralService;
 use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -506,6 +508,58 @@ class RhuItrConsultationTest extends TestCase
         $this->postRecord($user, $patient, $visit, $uuid)->assertCreated();
         $this->assertDatabaseHas('health_record_drafts', ['public_id' => $id, 'status' => 'consumed']);
         $this->assertDatabaseCount('health_records', 1);
+    }
+
+    public function test_legacy_rhu_draft_round_trips_through_claim_and_update(): void
+    {
+        $patient = $this->patient();
+        $user = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($user, $visit);
+        $input = [
+            'patient_id' => $patient->id, 'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid, 'classification' => 'Immunization',
+            'payload' => ['chiefComplaint' => 'Checkup'],
+        ];
+        $id = $this->as($user)->postJson('/api/health-record-drafts', $input)->assertCreated()->json('data.id');
+        $draft = HealthRecordDraft::where('public_id', $id)->firstOrFail();
+        $draft->update([
+            'consultation_uuid' => null,
+            'encrypted_payload' => Crypt::encryptString(json_encode([
+                'selectedPrograms' => ['EPI'],
+                'primaryProgram' => 'EPI',
+                'diagnosis' => 'Legacy diagnosis',
+                'prescriptions' => [['id' => 'rx1', 'medicineName' => 'Example']],
+                'care_plan' => [
+                    'manage_to_bhc' => true,
+                    'continued_follow_up_task_ids' => [19],
+                    'service_supporting_labs' => [[
+                        'program' => 'EPI',
+                        'supporting_laboratory_tests' => [['reference' => 'record:7']],
+                    ]],
+                ],
+            ], JSON_THROW_ON_ERROR)),
+        ]);
+
+        $path = '/api/health-record-drafts/'.$id;
+        $this->getJson("/api/health-record-drafts/lookup?patient_id={$patient->id}&rhu_visit_id={$visit->id}")
+            ->assertOk()->assertJsonPath('data.rhu_visit_id', $visit->id)->assertJsonPath('data.consultation_uuid', null);
+        $payload = $this->getJson($path)->assertOk()
+            ->assertJsonPath('data.payload.manageToBhc', true)
+            ->assertJsonPath('data.payload.carePlan.continuedFollowUpTaskIds.0', 19)
+            ->json('data.payload');
+        $claimed = $this->postJson($path.'/transition', ['action' => 'claim', 'version' => 1])->assertOk();
+        $this->putJson($path, [
+            ...$input,
+            'version' => $claimed->json('data.version'),
+            'payload' => [...$payload, 'chiefComplaint' => 'Revised', 'diagnosisDraft' => 'Still typing'],
+        ])->assertOk()->assertJsonPath('data.consultation_uuid', $uuid);
+        $this->getJson($path)->assertOk()
+            ->assertJsonPath('data.payload.diagnosis', 'Legacy diagnosis')
+            ->assertJsonPath('data.payload.diagnosisDraft', 'Still typing')
+            ->assertJsonPath('data.payload.prescriptions.0.id', 'rx1')
+            ->assertJsonPath('data.payload.carePlan.serviceSupportingLabs.0.supportingLaboratoryTests.0.reference', 'record:7');
+        $this->assertDatabaseCount('health_records', 0);
     }
 
     public function test_referred_bhc_findings_and_rhu_reassessments_remain_accessible_without_patient_rhu_assignment(): void

@@ -9,19 +9,22 @@ const source = readFileSync(
   "utf8",
 );
 
-test("create adopts an existing consultation draft instead of pausing on DRAFT_CONSULTATION_EXISTS", () => {
-  assert.match(source, /DRAFT_CONSULTATION_EXISTS_CODE/);
-  assert.match(source, /existingId/);
-  assert.match(source, /updateDraft\(draftRef\.current\.id/);
-  assert.match(
-    source,
-    /Server already has this consultation's draft/,
-  );
+test("duplicate create pauses on the same path as a stale draft update", () => {
+  assert.match(source, /code === DRAFT_VERSION_CONFLICT_CODE[\s\S]*?code === DRAFT_CONSULTATION_EXISTS_CODE[\s\S]*?pausedRef\.current = true/);
+  assert.match(source, /await params\.updateDraft\(current\.id, \{ \.\.\.request, version: current\.version \}\)\s*: await params\.createDraft\(request\)/);
+  assert.doesNotMatch(source, /createErr|existingVersion/);
 });
 
-test("manual flush retries transient pauses but not hard conflict or validation", () => {
-  assert.match(source, /Transient sticky pause: allow one forced leave-save/);
-  assert.match(source, /error\.type === "validation"/);
+test("only the rejected snapshot is blocked after validation fails", () => {
+  assert.match(source, /rejectedSerializedRef\.current = attempted/);
+  assert.match(source, /if \(nextSerialized === rejectedSerializedRef\.current\) return/);
+  assert.match(source, /if \(pausedRef\.current\) return false/);
   assert.match(source, /Keep editing": stay paused/);
-  assert.match(source, /setStatus\("conflict"\)/);
+});
+
+test("autosave distinguishes a retry delay and a save that still has a newer edit", () => {
+  assert.match(source, /setStatus\("retrying"\)/);
+  assert.match(source, /scheduleRetry\(attempts, err\.retryAfter\)/);
+  assert.match(source, /const stillDirty = serializePayload\(latestPayloadRef\.current\) !== nextSerialized/);
+  assert.match(source, /setStatus\(stillDirty \? "pending" : "saved"\)/);
 });

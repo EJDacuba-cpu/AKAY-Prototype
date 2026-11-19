@@ -12,10 +12,12 @@ export {
 export const rhuEntryKey = (owner, visitId, patientId) => ["rhu-consultation-entry", owner, String(visitId), String(patientId)];
 
 export function rhuRecoveryMatches({ visit, patientId, draft }) {
-  const uuid = visit?.consultation_uuid || visit?.consultationUuid;
+  const uuid = String(visit?.consultation_uuid || visit?.consultationUuid || "").toLowerCase();
+  const visitMatches = String(draft?.rhuVisitId) === String(visit?.id);
   return Boolean(visit?.id && uuid && String(visit.patient?.id || visit.patient_id) === String(patientId)
     && String(draft?.patient?.id) === String(patientId)
-    && draft?.consultationUuid === uuid
+    && (!draft.rhuVisitId || visitMatches)
+    && (draft.consultationUuid ? String(draft.consultationUuid).toLowerCase() === uuid : visitMatches)
     && (!draft.payload?.rhuVisitId || String(draft.payload.rhuVisitId) === String(visit.id)));
 }
 
@@ -35,7 +37,9 @@ async function currentServer({ visit, patientId, owner, decision, api }) {
   const metadata = await api.lookup({ patientId, rhuVisitId: visit.id, draftOwnerContext: owner });
   if (metadata) assertDraft(visit, patientId, metadata);
   if ((metadata?.id || null) !== (decision?.server?.id || null)) {
-    throw new Error("The unfinished work changed. Please try again before continuing.");
+    throw Object.assign(new Error("The unfinished work changed. Check for the latest draft before continuing."), {
+      code: "DRAFT_LOOKUP_CHANGED",
+    });
   }
   return metadata;
 }

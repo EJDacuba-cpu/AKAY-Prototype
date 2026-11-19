@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\DraftDatabaseConnectionFailure;
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\EnforceProductionHttps;
 use App\Http\Middleware\EnsureAccessTokenAbility;
@@ -62,6 +63,17 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->report(function (Throwable $exception) {
+            if (app()->bound('request')
+                && request()->is('api/health-record-drafts', 'api/health-record-drafts/*')
+                && DraftDatabaseConnectionFailure::matches($exception)) {
+                Log::warning('Health-record draft database unavailable.', [
+                    'method' => request()->method(),
+                    'route' => request()->route()?->uri(),
+                ]);
+
+                return false;
+            }
+
             if (config('app.env') !== 'production'
                 || ! app()->bound('request')
                 || ! request()->is('api/*')) {
@@ -91,6 +103,14 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (Throwable $exception, Request $request) {
+            if ($request->is('api/health-record-drafts', 'api/health-record-drafts/*')
+                && DraftDatabaseConnectionFailure::matches($exception)) {
+                return response()->json([
+                    'message' => 'Consultation drafts are temporarily unavailable. Please try again shortly.',
+                    'code' => 'DRAFT_DATABASE_UNAVAILABLE',
+                ], 503);
+            }
+
             if (! $request->is('api/*')
                 || config('app.env') !== 'production') {
                 return null;

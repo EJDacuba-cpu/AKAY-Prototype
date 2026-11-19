@@ -557,6 +557,34 @@ class HealthRecordDraftTest extends TestCase
             ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.allergen', 'Dust');
     }
 
+    public function test_unsupported_saved_field_keeps_original_draft_intact(): void
+    {
+        $id = $this->storedDraft([...$this->draftPayload(), 'oldClinicalField' => 'Fixture']);
+        $query = HealthRecordDraft::where('public_id', $id);
+        $original = $query->value('encrypted_payload');
+
+        $this->getJson("/api/health-record-drafts/{$id}")->assertConflict()
+            ->assertJsonPath('code', 'DRAFT_STORED_PAYLOAD_UNSUPPORTED');
+        $this->putJson("/api/health-record-drafts/{$id}", [...$this->draftRequest($this->draftPayload()), 'version' => 1])
+            ->assertConflict()->assertJsonPath('code', 'DRAFT_STORED_PAYLOAD_UNSUPPORTED');
+
+        $this->assertSame($original, $query->value('encrypted_payload'));
+        $this->assertSame(1, $query->value('version'));
+    }
+
+    public function test_draft_lookup_connection_failure_returns_retryable_response(): void
+    {
+        $failure = new \PDOException('Synthetic connection failure');
+        $failure->errorInfo = ['08006'];
+        $this->mock(HealthRecordDraftService::class, fn ($mock) => $mock
+            ->shouldReceive('lookupFor')->once()->andThrow($failure));
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/lookup?patient_id={$this->patientA->id}")
+            ->assertServiceUnavailable()
+            ->assertJsonPath('code', 'DRAFT_DATABASE_UNAVAILABLE');
+    }
+
     public function test_full_pre_itr_draft_opens_with_its_background_update_dropped(): void
     {
         $this->assertOpensWithoutBackgroundUpdate([

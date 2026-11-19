@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hydrateRhuConsultationDraft } from "./rhuDraftResume.js";
+import { hydrateRhuConsultationDraft, rhuRecoveryMatches } from "./rhuDraftResume.js";
+
+test("legacy recovery requires server visit metadata when the draft has no consultation UUID", () => {
+  const visit = { id: 19, patient_id: 7, consultation_uuid: "A-UUID" };
+  const legacy = { patient: { id: 7 }, consultationUuid: "", payload: { rhuVisitId: 19 } };
+  const matches = (draft) => rhuRecoveryMatches({ visit, patientId: 7, draft });
+  assert.equal(matches(legacy), false);
+  assert.equal(matches({ ...legacy, rhuVisitId: 18 }), false);
+  assert.equal(matches({ ...legacy, rhuVisitId: 19 }), true);
+  assert.equal(matches({ ...legacy, rhuVisitId: 19, consultationUuid: "a-uuid" }), true);
+  assert.equal(matches({ ...legacy, rhuVisitId: 19, consultationUuid: "other-uuid" }), false);
+});
 
 test("hydrate loads an existing visit draft for an explicit Resume decision", async () => {
   const events = [];

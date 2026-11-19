@@ -5,6 +5,7 @@ const labels = {
   checking: "Checking for unfinished work…",
   pending: "Unsaved changes",
   saving: "Saving draft…",
+  retrying: "Waiting to retry draft save",
   saved: "Draft saved",
   offline: "Connection lost",
   unavailable: "Unable to save",
@@ -36,6 +37,7 @@ export default function FormDraftStatus({
   lastSavedAt = "",
   error = "",
   onRetry,
+  retryLabel = "Retry",
   className = "",
 }) {
   if (status === "idle") return null;
@@ -62,7 +64,7 @@ export default function FormDraftStatus({
       {problem && <span role="alert" className="text-alert-700">{problem}</span>}
       {canRetry && (
         <Button type="button" variant="link" size="compact" onClick={onRetry}>
-          Retry
+          {retryLabel}
         </Button>
       )}
     </div>

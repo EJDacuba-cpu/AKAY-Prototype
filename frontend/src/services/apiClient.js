@@ -177,9 +177,9 @@ async function sendRequest(endpoint, options = {}) {
     if (authenticatedUser?.working_facility_key) headers["X-Working-Facility"] = authenticatedUser.working_facility_key;
   }
 
-  const response = await fetchWithTimeout(
-    (signal) =>
-      fetch(url, {
+  const { response, payload } = await fetchWithTimeout(
+    async (signal) => {
+      const response = await fetch(url, {
         ...options,
         headers,
         cache: options.cache || "no-store",
@@ -189,7 +189,17 @@ async function sendRequest(endpoint, options = {}) {
           options.body && !(options.body instanceof FormData)
             ? JSON.stringify(options.body)
             : options.body,
-      }),
+      });
+      if (response.status === 204) return { response, payload: null };
+      if (response.ok && options.responseType === "blob") {
+        return { response, payload: await response.blob() };
+      }
+      const payload = await response.json().catch((error) => {
+        if (signal.aborted) throw error;
+        return {};
+      });
+      return { response, payload };
+    },
     { signal: options.signal, timeoutMs: REQUEST_TIMEOUT_MS, createTimeoutError },
   ).catch((error) => {
     // Timeouts and the caller's own cancellations pass through untouched.
@@ -205,16 +215,11 @@ async function sendRequest(endpoint, options = {}) {
     throw error;
   });
 
-  if (response.status === 204) return null;
-
-  if (response.ok && options.responseType === "blob") return response.blob();
-
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(serverErrorMessage(payload));
     error.status = response.status;
-    error.code = payload.code || "";
-    error.errors = payload.errors || {};
+    error.code = payload?.code || "";
+    error.errors = payload?.errors || {};
     error.payload = payload;
     if (response.status === 429) {
       error.code = error.code || "RATE_LIMITED";

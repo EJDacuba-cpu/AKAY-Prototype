@@ -31,6 +31,41 @@ test("serviceUsagesForSave keeps only complete manual rows", () => {
   ]);
 });
 
+test("manual usage drafts retain typing spaces and send only supported fields", () => {
+  const [draftRow] = normalizeServiceUsages([{
+    id: "usage-1",
+    serviceProgram: "Maternal",
+    itemDescription: "Iron ",
+    quantity: "1",
+    unit: "tablet ",
+    note: "For ",
+    derived: false,
+  }]);
+  assert.deepEqual(draftRow, {
+    id: "usage-1",
+    serviceProgram: "Maternal",
+    itemDescription: "Iron ",
+    quantity: 1,
+    unit: "tablet ",
+    usedAt: "",
+    note: "For ",
+  });
+
+  const edited = normalizeServiceUsages([{
+    ...draftRow,
+    itemDescription: draftRow.itemDescription + "supplement",
+    note: draftRow.note + "testing purposes ",
+  }]);
+  assert.deepEqual(serviceUsagesForSave(edited), [{
+    id: "usage-1",
+    serviceProgram: "Maternal",
+    itemDescription: "Iron supplement",
+    quantity: 1,
+    unit: "tablet",
+    note: "For testing purposes",
+  }]);
+});
+
 test("serviceUsageErrors flags incomplete rows and unselected programs", () => {
   const errors = serviceUsageErrors(
     [{ id: "x", serviceProgram: "Nutrition", itemDescription: "", quantity: 0, unit: "" }],

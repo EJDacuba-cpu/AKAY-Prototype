@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\DraftConsultationExistsException;
+use App\Exceptions\DraftDatabaseConnectionFailure;
 use App\Exceptions\DraftVersionConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordDraftRequest;
@@ -10,6 +11,7 @@ use App\Models\HealthRecordDraft;
 use App\Services\AuditLogger;
 use App\Services\HealthRecordDraftService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -177,15 +179,24 @@ class HealthRecordDraftController extends Controller
     ): mixed {
         try {
             return $callback();
+        } catch (ValidationException $exception) {
+            Log::notice('Health-record draft request rejected.', [
+                'operation' => $operation,
+                'fields' => array_keys($exception->errors()),
+            ]);
+            throw $exception;
         } catch (
-            ValidationException|
             ModelNotFoundException|
             DraftVersionConflictException|
             DraftConsultationExistsException|
+            HttpResponseException|
             HttpExceptionInterface $exception
         ) {
             throw $exception;
         } catch (Throwable $exception) {
+            if (DraftDatabaseConnectionFailure::matches($exception)) {
+                throw $exception;
+            }
             Log::warning('Health-record draft operation failed.', [
                 'operation' => $operation,
                 'user_id' => $request->user()?->id,

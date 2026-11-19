@@ -9,17 +9,17 @@ import {
 } from "./clinicalConsultationLease.js";
 
 test("lease occupancy ignores same-user and expired leases", () => {
-  const now = Date.parse("2026-11-12T01:00:00.000Z");
+  const now = Date.now();
   const activeOther = {
     canEdit: true,
     editor: { id: "9", name: "Jane Midwife" },
-    editorExpiresAt: "2026-11-12T01:10:00.000Z",
+    editorExpiresAt: new Date(now + 600_000).toISOString(),
   };
   assert.equal(consultationEditorLease(activeOther, "3", now).occupied, true);
   assert.equal(consultationEditorLease(activeOther, "9", now).occupied, false);
   assert.equal(consultationEditorLease({
     ...activeOther,
-    editorExpiresAt: "2026-11-12T00:59:00.000Z",
+    editorExpiresAt: new Date(now - 60_000).toISOString(),
   }, "3", now).occupied, false);
   assert.equal(ownershipFromDraft(activeOther, "3").canTakeover, true);
   assert.equal(ownershipFromDraft({ ...activeOther, canEdit: false }, "3").canTakeover, false);

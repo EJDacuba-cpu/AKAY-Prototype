@@ -24,6 +24,7 @@ const LIMITS = {
 const text = (value) => String(value ?? "").trim();
 
 const clip = (value, max) => text(value).slice(0, max);
+const clipEditableText = (value, max) => String(value ?? "").slice(0, max);
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -85,7 +86,7 @@ export function normalizeServiceUsages(list) {
     rows.push({
       id,
       serviceProgram,
-      itemDescription: clip(item.itemDescription ?? item.item_description, LIMITS.itemDescription),
+      itemDescription: clipEditableText(item.itemDescription ?? item.item_description, LIMITS.itemDescription),
       quantity: (() => {
         const raw = item.quantity;
         if (typeof raw === "number" && Number.isInteger(raw) && raw >= 1) return raw;
@@ -95,10 +96,9 @@ export function normalizeServiceUsages(list) {
         }
         return raw == null || raw === "" ? "" : raw;
       })(),
-      unit: clip(item.unit, LIMITS.unit),
+      unit: clipEditableText(item.unit, LIMITS.unit),
       usedAt: text(item.usedAt ?? item.used_at).slice(0, 10),
-      note: clip(item.note, LIMITS.note),
-      derived: false,
+      note: clipEditableText(item.note, LIMITS.note),
     });
     if (rows.length >= LIMITS.count) break;
   }
@@ -111,11 +111,11 @@ export function serviceUsagesForSave(list) {
     .map((row) => ({
       id: row.id,
       serviceProgram: row.serviceProgram,
-      itemDescription: row.itemDescription,
+      itemDescription: text(row.itemDescription),
       quantity: Number(row.quantity),
-      unit: row.unit,
+      unit: text(row.unit),
       ...(row.usedAt ? { usedAt: row.usedAt } : {}),
-      ...(row.note ? { note: row.note } : {}),
+      ...(text(row.note) ? { note: text(row.note) } : {}),
     }));
 }
 
