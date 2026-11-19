@@ -134,39 +134,40 @@ export default function RhuPatientsWorkspace() {
       <div className="flex h-full min-h-0 flex-col gap-4">
         {isQueue ? (
           <>
-            <div className="min-w-0 shrink-0">
-              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{pageTitle}</h1>
-              <p className="mt-1 text-[13px] text-neutral-600">{pageSubtitle}</p>
-            </div>
-
-            <div className={`flex shrink-0 justify-end ${canViewQueue ? "" : "invisible"}`} aria-hidden={!canViewQueue}>
-              <SearchFilterCluster
-                search={
-                  <SearchField
-                    value={queueSearch}
-                    onChange={setQueueSearch}
-                    placeholder="Search patient name"
-                    label="Search today's queue"
-                  />
-                }
-                filter={
-                  <ListFilterPopover
-                    fields={visitProgressFields}
-                    applied={{ visitProgress }}
-                    activeFilters={visitProgressActive}
-                    activeCount={visitProgressActive.length}
-                    onApply={(next) =>
-                      setVisitProgress(next.visitProgress || VISIT_PROGRESS_ALL)
-                    }
-                    onRemoveFilter={() => setVisitProgress(VISIT_PROGRESS_ALL)}
-                    onClearAll={() => setVisitProgress(VISIT_PROGRESS_ALL)}
-                    pickValues={(current) =>
-                      pickFilterValues(current, visitProgressFields)
-                    }
-                    buildDefaults={() => ({ visitProgress: VISIT_PROGRESS_ALL })}
-                  />
-                }
-              />
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 shrink-0">
+                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{pageTitle}</h1>
+                <p className="mt-1 text-[13px] text-neutral-600">{pageSubtitle}</p>
+              </div>
+              <div className={`ml-auto flex shrink-0 justify-end ${canViewQueue ? "" : "invisible"}`} aria-hidden={!canViewQueue}>
+                <SearchFilterCluster
+                  search={
+                    <SearchField
+                      value={queueSearch}
+                      onChange={setQueueSearch}
+                      placeholder="Search patient name"
+                      label="Search today's queue"
+                    />
+                  }
+                  filter={
+                    <ListFilterPopover
+                      fields={visitProgressFields}
+                      applied={{ visitProgress }}
+                      activeFilters={visitProgressActive}
+                      activeCount={visitProgressActive.length}
+                      onApply={(next) =>
+                        setVisitProgress(next.visitProgress || VISIT_PROGRESS_ALL)
+                      }
+                      onRemoveFilter={() => setVisitProgress(VISIT_PROGRESS_ALL)}
+                      onClearAll={() => setVisitProgress(VISIT_PROGRESS_ALL)}
+                      pickValues={(current) =>
+                        pickFilterValues(current, visitProgressFields)
+                      }
+                      buildDefaults={() => ({ visitProgress: VISIT_PROGRESS_ALL })}
+                    />
+                  }
+                />
+              </div>
             </div>
 
             <RhuQueueTable

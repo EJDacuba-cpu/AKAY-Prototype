@@ -46,13 +46,6 @@ export async function resolveMonitoringHandoffIdentityReview(id, note) {
   }));
 }
 
-export async function correctMonitoringHandoffIdentityLink(id, note) {
-  return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/correct-identity-link`, {
-    method: "POST",
-    body: { note: String(note || "").trim() },
-  }));
-}
-
 export async function getPatientRhuSharedClinical(patientId) {
   return unwrapList(await apiRequest(`/patients/${patientId}/rhu-shared-clinical`)) || [];
 }

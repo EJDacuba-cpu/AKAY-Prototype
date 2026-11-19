@@ -2,7 +2,7 @@ import { validateDispenseItems } from "../../../utils/medicineExpiryGroups";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { FixedTable, ModalButton, ModalFooter, ModalShell, PageStateWrapper, RefreshingIndicator, SearchField, TablePagination } from "../../common";
+import { FixedTable, ListFilterPopover, ModalButton, ModalFooter, ModalShell, PageStateWrapper, PlainStatusStamp, RefreshingIndicator, SearchField, SearchFilterCluster, TablePagination } from "../../common";
 import { Button } from "../../ui/button";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import RhuPrescriptionReviewModal from "./RhuPrescriptionReviewModal";
@@ -30,13 +30,16 @@ function rowKind(row) {
   return "prescription";
 }
 
-function statusLabel(row) {
-  const status = String(row?.status || "pending");
-  if (status === "given") return "Given";
-  if (status === "reconciled") return "Reconciled";
-  if (status === "needs_review") return "Needs review";
-  if (status === "unavailable") return "Unavailable";
-  return "Pending";
+const DISPENSE_STATUSES = [
+  { value: "pending", label: "Pending", tone: "warning" },
+  { value: "given", label: "Given", tone: "success" },
+  { value: "reconciled", label: "Reconciled", tone: "success" },
+  { value: "needs_review", label: "Needs review", tone: "warning" },
+  { value: "unavailable", label: "Unavailable", tone: "neutral" },
+];
+
+function dispenseStatus(row) {
+  return DISPENSE_STATUSES.find((status) => status.value === row?.status) || DISPENSE_STATUSES[0];
 }
 
 export default function RhuToDispenseTab() {
@@ -44,6 +47,7 @@ export default function RhuToDispenseTab() {
   const client = useQueryClient();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("");
   const [review, setReview] = useState(null);
   const [usageReview, setUsageReview] = useState(null);
   const [dispense, setDispense] = useState(null);
@@ -75,6 +79,7 @@ export default function RhuToDispenseTab() {
       const kind = rowKind(row);
       if (sourceFilter === "prescription" && kind !== "prescription") return false;
       if (sourceFilter === "service_usage" && kind !== "service_usage") return false;
+      if (statusFilter && dispenseStatus(row).value !== statusFilter) return false;
       if (!q) return true;
       const haystack = [
         row.patientName,
@@ -88,8 +93,8 @@ export default function RhuToDispenseTab() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [queue.data, search, sourceFilter]);
-  const { page, setPage, totalPages, pageRows } = usePagedRows(rows, `${search}|${sourceFilter}`);
+  }, [queue.data, search, sourceFilter, statusFilter]);
+  const { page, setPage, totalPages, pageRows } = usePagedRows(rows, `${search}|${sourceFilter}|${statusFilter}`);
   const facility = formatFacilityName(user, "Rural Health Unit");
 
   async function confirmGiven() {
@@ -162,6 +167,28 @@ export default function RhuToDispenseTab() {
     }
   }
 
+  const searchField = (
+    <SearchField value={search} onChange={setSearch} placeholder="Search patient or item" label="Search patient or item" />
+  );
+  const filterPopover = (
+    <ListFilterPopover
+      fields={[{
+        key: "status",
+        label: "Status",
+        options: [{ value: "", label: "All statuses" }, ...DISPENSE_STATUSES],
+        resetValue: "",
+        fullWidth: true,
+      }]}
+      applied={{ status: statusFilter }}
+      activeFilters={statusFilter
+        ? [{ key: "status", label: `Status: ${dispenseStatus({ status: statusFilter }).label}` }]
+        : []}
+      onApply={({ status }) => setStatusFilter(status)}
+      onRemoveFilter={() => setStatusFilter("")}
+      onClearAll={() => setStatusFilter("")}
+    />
+  );
+
   return (
     <PageStateWrapper
       skeleton="dispensing"
@@ -189,28 +216,22 @@ export default function RhuToDispenseTab() {
           </p>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-md border border-neutral-200 bg-white p-0.5" role="group" aria-label="Source filter">
-              {SOURCE_FILTERS.map((filter) => (
-                <button
-                  key={filter.id}
-                  type="button"
-                  className={`rounded px-2.5 py-1 text-xs font-medium ${
-                    sourceFilter === filter.id
-                      ? "bg-neutral-900 text-white"
-                      : "text-neutral-600 hover:bg-neutral-50"
-                  }`}
-                  aria-pressed={sourceFilter === filter.id}
-                  onClick={() => setSourceFilter(filter.id)}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-neutral-600">{rows.length} of {(queue.data || []).length} items</p>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Source filter">
+            {SOURCE_FILTERS.map((filter) => (
+              <Button
+                key={filter.id}
+                type="button"
+                variant={sourceFilter === filter.id ? "brand" : "secondary"}
+                size="compact"
+                aria-pressed={sourceFilter === filter.id}
+                onClick={() => setSourceFilter(filter.id)}
+              >
+                {filter.label}
+              </Button>
+            ))}
           </div>
-          <div className="w-full sm:max-w-xs">
-            <SearchField value={search} onChange={setSearch} placeholder="Search patient or item" label="Search patient or item" />
+          <div className="flex w-full justify-end sm:ml-auto sm:w-auto">
+            <SearchFilterCluster searchClassName="sm:w-64" search={searchField} filter={filterPopover} />
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -247,7 +268,9 @@ export default function RhuToDispenseTab() {
                           {row.itemSummary || row.prescriptionText || "—"}
                         </span>
                       </td>
-                      <td className="px-3 text-neutral-700">{statusLabel(row)}</td>
+                      <td className="px-3 text-neutral-700">
+                        <PlainStatusStamp label={dispenseStatus(row).label} tone={dispenseStatus(row).tone} />
+                      </td>
                       <td className="px-3 text-right">
                         {kind === "service_usage" ? (
                           <Button

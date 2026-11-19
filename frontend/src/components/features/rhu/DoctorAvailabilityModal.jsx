@@ -326,30 +326,58 @@ function NotesField({ label, value, onChange, placeholder, disabled = false }) {
   );
 }
 
-/**
- * Search box over an always-visible, fixed-height list. Nothing opens or
- * closes, so the modal never changes height while a doctor is picked.
- */
 function DoctorPicker({ doctors, value, onChange, error }) {
   const inputId = useId();
   const listId = useId();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const matches = useMemo(() => filterDoctorRoster(doctors, { query }), [doctors, query]);
+  const [open, setOpen] = useState(false);
+  const selectedName = doctors.find((doctor) => doctor.id === value)?.name || "";
+  const matches = useMemo(() =>
+    filterDoctorRoster(doctors, { query }).toSorted((a, b) =>
+      Number(displayedAvailabilityStatus(b) === AVAILABILITY_AVAILABLE) -
+      Number(displayedAvailabilityStatus(a) === AVAILABILITY_AVAILABLE)),
+    [doctors, query],
+  );
+
+  function closeOptions() {
+    setOpen(false);
+    setQuery("");
+    setActive(0);
+  }
+
+  function selectDoctor(doctor) {
+    onChange(doctor.id);
+    closeOptions();
+  }
 
   function handleKeyDown(event) {
+    if (event.key === "Escape" && open) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeOptions();
+      return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setActive((index) => (matches.length ? (index + step + matches.length) % matches.length : 0));
-    } else if (event.key === "Enter" && matches[active]) {
+      if (matches.length) {
+        const next = (active + step + matches.length) % matches.length;
+        setActive(next);
+        document.getElementById(`${listId}-${matches[next].id}`)?.scrollIntoView({ block: "nearest" });
+      }
+    } else if (event.key === "Enter" && open && matches[active]) {
       event.preventDefault();
-      onChange(matches[active].id);
+      selectDoctor(matches[active]);
     }
   }
 
   return (
-    <div>
+    <div className="relative">
       <label htmlFor={inputId} className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-neutral-600">
         Doctor <span className="text-alert-700">*</span>
       </label>
@@ -357,14 +385,18 @@ function DoctorPicker({ doctors, value, onChange, error }) {
         id={inputId}
         type="text"
         role="combobox"
-        aria-expanded="true"
-        aria-controls={listId}
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={matches[active] ? `${listId}-${matches[active].id}` : undefined}
+        aria-activedescendant={open && matches[active] ? `${listId}-${matches[active].id}` : undefined}
         autoComplete="off"
-        value={query}
+        value={open ? query : selectedName}
         placeholder="Search doctor name"
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onBlur={closeOptions}
         onChange={(event) => {
+          setOpen(true);
           setQuery(event.target.value);
           setActive(0);
         }}
@@ -374,11 +406,11 @@ function DoctorPicker({ doctors, value, onChange, error }) {
         }`}
       />
       {error ? <p className="mt-1 text-[12px] text-alert-700">{error}</p> : null}
-      <ul
+      {open && <ul
         id={listId}
         role="listbox"
         aria-label="Doctors"
-        className="mt-1.5 h-28 overflow-y-auto rounded-lg border border-neutral-200 bg-white"
+        className="absolute inset-x-0 z-20 mt-1.5 max-h-52 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg"
       >
         {matches.length === 0 ? (
           <li className="px-3 py-2 text-[12px] text-neutral-600">No doctor matches that name.</li>
@@ -392,7 +424,8 @@ function DoctorPicker({ doctors, value, onChange, error }) {
                 id={`${listId}-${doctor.id}`}
                 role="option"
                 aria-selected={selected}
-                onClick={() => onChange(doctor.id)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectDoctor(doctor)}
                 className={`flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-[13px] ${
                   selected
                     ? "bg-brand-50 text-brand-700"
@@ -407,7 +440,7 @@ function DoctorPicker({ doctors, value, onChange, error }) {
             );
           })
         )}
-      </ul>
+      </ul>}
     </div>
   );
 }

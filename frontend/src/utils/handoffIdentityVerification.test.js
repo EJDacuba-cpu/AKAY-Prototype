@@ -23,13 +23,12 @@ test("same shared patient detection never merges different ids", () => {
   assert.equal(isSameSharedPatient({ id: 12 }, { id: 99 }), false);
 });
 
-test("identity comparison marks mismatched ids", () => {
+test("identity comparison shows only personal details", () => {
   const rows = compareIdentityFields(
     { id: 1, first_name: "Ana", last_name: "Cruz", birthdate: "1990-01-01", sex: "Female" },
     { id: 2, first_name: "Ana", last_name: "Cruz", birthdate: "1990-01-01", sex: "Female" },
   );
-  const idRow = rows.find((row) => row.label === "Patient ID");
-  assert.equal(idRow.match, false);
+  assert.deepEqual(rows.map((row) => row.label), ["Name", "Birthdate", "Sex", "Contact"]);
   assert.equal(rows.find((row) => row.label === "Name").match, true);
 });
 

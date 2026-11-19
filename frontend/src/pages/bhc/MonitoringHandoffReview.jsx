@@ -10,7 +10,6 @@ import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { Button } from "../../components/ui/button";
 import {
   acceptMonitoringHandoffRequest,
-  correctMonitoringHandoffIdentityLink,
   flagMonitoringHandoffIdentityReview,
   getMonitoringHandoffRequest,
   linkMonitoringHandoffRequest,
@@ -60,7 +59,6 @@ export default function MonitoringHandoffReview() {
   const [searchError, setSearchError] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
-  const [verificationEvidence, setVerificationEvidence] = useState("");
   const [busy, setBusy] = useState("");
 
   const detailsQuery = useQuery({
@@ -75,7 +73,6 @@ export default function MonitoringHandoffReview() {
     || request?.identity_resolution === "needs_review";
   const verified = Boolean(request?.linked_patient)
     && ["pending_review", "accepted_awaiting_first_visit", "monitoring_active"].includes(request?.status);
-  const canCorrectLink = canAct && request?.status === "pending_review" && Boolean(request?.linked_patient);
 
   const comparison = useMemo(
     () => (selectedMatch ? compareIdentityFields(request?.source_patient, selectedMatch) : []),
@@ -118,7 +115,6 @@ export default function MonitoringHandoffReview() {
     setSearchError("");
     setReviewNote("");
     setIdentityConfirmed(false);
-    setVerificationEvidence("");
   }
 
   async function searchDirectory(event) {
@@ -128,6 +124,7 @@ export default function MonitoringHandoffReview() {
     setSearching(true);
     setSearchError("");
     setSelectedMatch(null);
+    setIdentityConfirmed(false);
     try {
       const rows = await searchBhcPatients(query);
       setLinkMatches(Array.isArray(rows) ? rows : []);
@@ -192,8 +189,7 @@ export default function MonitoringHandoffReview() {
 
   const source = request.source_patient || {};
   const sourceName = formatPatientName(source) || "Patient";
-  const linkedPatient = request.linked_patient;
-  const linkedId = linkedPatient?.id;
+  const linkedId = request.linked_patient?.id;
   const serviceKey = request.service_key || request.service?.key || "";
   const startPath = linkedId && request.handoff_kind === "service" && serviceKey
     ? startRoute({
@@ -206,9 +202,10 @@ export default function MonitoringHandoffReview() {
       : linkedId
         ? startRoute({ patientId: linkedId })
         : null;
-  const canAccept = canAct && request.status === "pending_review";
+  const canAccept = canAct && verified && request.status === "pending_review";
   const canStart = Boolean(request.can_start_consultation && startPath);
-  const showActions = canAccept || canStart;
+  const canOpenProfile = verified && Boolean(linkedId);
+  const showActions = canAccept || canStart || canOpenProfile;
 
   return (
     <DashboardLayout role="bhc" title="Monitoring Request">
@@ -223,7 +220,6 @@ export default function MonitoringHandoffReview() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h1 className="break-words text-2xl font-bold tracking-tight text-ink-900">{sourceName}</h1>
-                <p className="mt-1 text-sm tabular-nums text-neutral-600">Patient ID {source.id || "—"}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <PlainStatusStamp
@@ -269,7 +265,7 @@ export default function MonitoringHandoffReview() {
                         setSearchState(linkMatches.length || selectedMatch ? "success" : "idle");
                       }
                     }}
-                    placeholder="Name, Patient ID, or contact"
+                    placeholder="Name or contact number"
                     className={`mt-1 ${controlClass}`}
                     disabled={Boolean(busy) || searching}
                   />
@@ -296,20 +292,20 @@ export default function MonitoringHandoffReview() {
                         <button
                           type="button"
                           disabled={Boolean(busy)}
-                          onClick={() => setSelectedMatch(patient)}
+                          onClick={() => {
+                            if (!selected) setIdentityConfirmed(false);
+                            setSelectedMatch(patient);
+                          }}
                           className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${
                             selected ? "bg-brand-50" : "hover:bg-neutral-50"
                           }`}
                         >
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-semibold text-ink-900">
-                              {formatPatientName(patient) || `Patient ${patient.id}`}
+                              {formatPatientName(patient, "Name unavailable")}
                             </span>
                             <span className="mt-0.5 block truncate text-[11px] tabular-nums text-neutral-600">
-                              ID {patient.id}
-                              {patient.birthdate ? ` · ${patient.birthdate}` : ""}
-                              {patient.sex ? ` · ${patient.sex}` : ""}
-                              {patient.contact_number ? ` · ${patient.contact_number}` : ""}
+                              {[patient.birthdate, patient.sex, patient.contact_number].filter(Boolean).join(" · ")}
                             </span>
                           </span>
                           <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
@@ -373,25 +369,13 @@ export default function MonitoringHandoffReview() {
                 <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                   <PlainStatusStamp label="Potential Match" tone="warning" />
                   <p className="text-sm text-neutral-700">
-                    Name, birthdate, and sex match. Confirm supporting identity details before linking.
-                    Patient IDs stay unchanged; records are not merged.
+                    The name, birthdate, and sex match. Check the contact details before linking.
                   </p>
                   {linkMatches.length > 1 && (
                     <p className="text-sm text-warning-700">
-                      Multiple potential registrations were found. Confirm you selected the correct BHC record.
+                      More than one patient was found. Check that you selected the right person.
                     </p>
                   )}
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                    Verification evidence summary
-                    <textarea
-                      value={verificationEvidence}
-                      onChange={(event) => setVerificationEvidence(event.target.value)}
-                      rows={2}
-                      placeholder="e.g. Contact and address matched registration card"
-                      className={`mt-1 ${controlClass} h-auto py-2`}
-                      disabled={Boolean(busy)}
-                    />
-                  </label>
                   <label className="flex items-start gap-2 text-sm text-neutral-700">
                     <input
                       type="checkbox"
@@ -400,10 +384,7 @@ export default function MonitoringHandoffReview() {
                       onChange={(event) => setIdentityConfirmed(event.target.checked)}
                       disabled={Boolean(busy)}
                     />
-                    <span>
-                      I verified that BHC Patient ID {selectedMatch.id} is the same person as RHU
-                      Patient ID {request.source_patient?.id}.
-                    </span>
+                    <span>I confirm that the selected BHC patient is the person in the RHU request.</span>
                   </label>
                   <Button
                     type="button"
@@ -412,35 +393,12 @@ export default function MonitoringHandoffReview() {
                     onClick={() => run(
                       "link",
                       () => linkMonitoringHandoffRequest(request.id, selectedMatch.id, {
-                        identityConfirmed: true,
-                        verificationEvidence,
+                        identityConfirmed,
                       }),
-                      "Cross-record patient identity verified.",
+                      "Patient verified and linked.",
                     )}
                   >
                     Verify &amp; Link Existing Patient
-                  </Button>
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                    Or escalate for review
-                    <textarea
-                      value={reviewNote}
-                      onChange={(event) => setReviewNote(event.target.value)}
-                      rows={2}
-                      className={`mt-1 ${controlClass} h-auto py-2`}
-                      disabled={Boolean(busy)}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busy === "review" || !reviewNote.trim()}
-                    onClick={() => run(
-                      "review",
-                      () => flagMonitoringHandoffIdentityReview(request.id, reviewNote.trim()),
-                      "Escalated for identity review.",
-                    )}
-                  >
-                    Escalate for Review
                   </Button>
                 </div>
               )}
@@ -530,56 +488,6 @@ export default function MonitoringHandoffReview() {
           )}
 
           {verified && (
-            <section className="space-y-3 border-b border-neutral-200 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[17px] font-bold text-ink-900">Verified at Receiving BHC</h2>
-                  <p className="mt-1 text-sm tabular-nums text-neutral-700">
-                    {formatPatientName(linkedPatient) || sourceName} · ID {linkedId}
-                  </p>
-                  {request.identity_resolution === "verified_cross_record" && (
-                    <p className="mt-1 text-xs text-neutral-600">
-                      Cross-record link: RHU source ID {request.source_patient?.id} → BHC ID {linkedId}. Both records preserved.
-                    </p>
-                  )}
-                </div>
-                <Button asChild variant="secondary" size="sm">
-                  <Link to={`/bhc/patients/${linkedId}`}>Patient Profile</Link>
-                </Button>
-              </div>
-              {canCorrectLink && (
-                <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                  <p className="text-sm text-neutral-700">
-                    Incorrect verification? Unlink and return this request to identity review. Existing consultations stay on their original patient IDs.
-                  </p>
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                    Correction note
-                    <textarea
-                      value={reviewNote}
-                      onChange={(event) => setReviewNote(event.target.value)}
-                      rows={2}
-                      className={`mt-1 ${controlClass} h-auto py-2 bg-white`}
-                      disabled={Boolean(busy)}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busy === "correct" || !reviewNote.trim()}
-                    onClick={() => run(
-                      "correct",
-                      () => correctMonitoringHandoffIdentityLink(request.id, reviewNote.trim()),
-                      "Identity link cleared for correction.",
-                    )}
-                  >
-                    Correct Identity Link
-                  </Button>
-                </div>
-              )}
-            </section>
-          )}
-
-          {verified && (
             <section className="border-b border-neutral-200 p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-ink-900">Monitoring recommendation</h2>
               <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">{request.recommendation || "—"}</p>
@@ -656,6 +564,11 @@ export default function MonitoringHandoffReview() {
                 {canStart && (
                   <Button asChild variant="brand">
                     <Link to={startPath}>Start Consultation</Link>
+                  </Button>
+                )}
+                {canOpenProfile && (
+                  <Button asChild variant="secondary">
+                    <Link to={`/bhc/patients/${linkedId}`}>Patient Profile</Link>
                   </Button>
                 )}
               </div>

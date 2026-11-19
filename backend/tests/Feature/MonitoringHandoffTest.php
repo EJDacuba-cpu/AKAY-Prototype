@@ -798,7 +798,6 @@ class MonitoringHandoffTest extends TestCase
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $destination->id,
             'identity_confirmed' => true,
-            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
         ])->assertOk()
             ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_PENDING_REVIEW)
             ->assertJsonPath('data.source_patient.id', $source->id)
@@ -816,7 +815,6 @@ class MonitoringHandoffTest extends TestCase
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $destination->id,
             'identity_confirmed' => true,
-            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
         ])->assertOk()
             ->assertJsonPath('data.linked_patient.id', $destination->id);
 
