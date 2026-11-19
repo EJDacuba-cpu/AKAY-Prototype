@@ -80,22 +80,26 @@ export function restoredClassification(classification, primaryProgram) {
 export const PATIENT_LOADING_REASON = "Loading patient details...";
 
 /**
- * Service eligibility depends on the patient (sex, age), so until the patient
- * record has loaded every service stays disabled rather than briefly looking
- * open to everyone.
+ * Patient details determine eligibility and linked follow-ups determine
+ * which services are already selected.
  */
-export function lockProgramsWhilePatientLoads(programs, patientLoading) {
-  if (!patientLoading) return programs;
+export function lockProgramsWhilePatientLoads(programs, patientLoading, followUpsLoading = false) {
+  if (!patientLoading && !followUpsLoading) return programs;
+  const note = patientLoading ? PATIENT_LOADING_REASON : "Loading linked follow-ups...";
   return programs.map((program) => ({
     ...program,
     disabled: true,
-    disabledReason: PATIENT_LOADING_REASON,
-    disabledNote: PATIENT_LOADING_REASON,
+    disabledReason: note,
+    disabledNote: note,
+    busy: true,
+    actionLabel: "Loading",
+    statusLabel: "Loading",
+    statusTone: "neutral",
   }));
 }
 
 const PROGRAM_ENROLL_LABELS = Object.freeze({
-  Maternal: "Include Maternal Care",
+  Maternal: "Enroll to Maternal Care",
   "Family Planning": "Enroll to Family Planning",
   EPI: "Enroll to Child Health / EPI",
   Nutrition: "Enroll to Nutrition",
@@ -104,7 +108,6 @@ const PROGRAM_ENROLL_LABELS = Object.freeze({
 /** The label of the button that enrolls the patient in a service for this visit. */
 export function programEnrollLabel(programKey, { enrolled } = {}) {
   if (programKey === "Maternal" && enrolled === true) return "Continue Maternal Care";
-  if (programKey === "Maternal" && enrolled === false) return "Include Maternal Care";
   if (programKey === "Nutrition" && enrolled === true) return "Continue Nutrition Care";
   return PROGRAM_ENROLL_LABELS[programKey] || "Enroll";
 }

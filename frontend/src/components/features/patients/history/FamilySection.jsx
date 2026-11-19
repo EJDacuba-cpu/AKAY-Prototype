@@ -7,6 +7,7 @@ import { Block, FieldGrid, RadioChoice, SelectField, TextField } from "./History
 import ListEditor from "./ListEditor";
 
 const ANSWERS = ["Yes", "No", "Unknown"];
+const answersWithoutDetails = new Set(["No", "Unknown"]);
 const NEW_ITEM = { condition: "", kind: "", relation: "", relativePatientId: null };
 
 /** Linked family members that can be picked as the relative: { value: id, label: name }. */
@@ -26,6 +27,13 @@ function relativeOptions(relatives) {
  */
 export function SimilarIllnessBlock({ value, onChange }) {
   const illness = value || { answer: "", who: "", note: "" };
+
+  function changeAnswer(answer) {
+    onChange(answersWithoutDetails.has(answer)
+      ? { answer, who: "", note: "" }
+      : { ...illness, answer });
+  }
+
   return (
     <Block title="Similar Illness in the Family" note="Asked at this visit. It is not added to Family Conditions.">
       <FieldGrid>
@@ -34,18 +42,22 @@ export function SimilarIllnessBlock({ value, onChange }) {
           value={illness.answer}
           options={ANSWERS}
           emptyLabel="Not recorded"
-          onChange={(next) => onChange({ ...illness, answer: next })}
+          onChange={changeAnswer}
         />
-        <TextField
-          label="Who"
-          value={illness.who}
-          onChange={(next) => onChange({ ...illness, who: next })}
-        />
-        <TextField
-          label="Note"
-          value={illness.note}
-          onChange={(next) => onChange({ ...illness, note: next })}
-        />
+        {!answersWithoutDetails.has(illness.answer) && (
+          <>
+            <TextField
+              label="Who"
+              value={illness.who}
+              onChange={(next) => onChange({ ...illness, who: next })}
+            />
+            <TextField
+              label="Note"
+              value={illness.note}
+              onChange={(next) => onChange({ ...illness, note: next })}
+            />
+          </>
+        )}
       </FieldGrid>
     </Block>
   );

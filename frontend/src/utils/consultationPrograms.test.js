@@ -77,6 +77,16 @@ test("every service is disabled while the patient is still loading", () => {
   assert.ok(locked.every((program) => program.disabled));
   assert.ok(locked.every((program) => program.disabledReason === PATIENT_LOADING_REASON));
   assert.ok(locked.every((program) => program.disabledNote === PATIENT_LOADING_REASON));
+  assert.ok(locked.every((program) => program.busy && program.actionLabel === "Loading"));
+});
+
+test("linked follow-ups show loading on the service buttons until the selection resolves", () => {
+  const programs = [{ key: "EPI", statusLabel: "Active" }, { key: "Nutrition" }];
+  const locked = lockProgramsWhilePatientLoads(programs, false, true);
+  assert.ok(locked.every((program) => program.disabled && program.busy));
+  assert.ok(locked.every((program) => program.statusLabel === "Loading"));
+  assert.ok(locked.every((program) => program.disabledNote === "Loading linked follow-ups..."));
+  assert.equal(lockProgramsWhilePatientLoads(programs, false, false), programs);
 });
 
 test("once the patient has loaded, eligibility is left exactly as computed", () => {
@@ -85,8 +95,8 @@ test("once the patient has loaded, eligibility is left exactly as computed", () 
 });
 
 test("each service has its own enroll button label", () => {
-  assert.equal(programEnrollLabel("Maternal"), "Include Maternal Care");
-  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Include Maternal Care");
+  assert.equal(programEnrollLabel("Maternal"), "Enroll to Maternal Care");
+  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Enroll to Maternal Care");
   assert.equal(programEnrollLabel("Maternal", { enrolled: true }), "Continue Maternal Care");
   assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
   assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");

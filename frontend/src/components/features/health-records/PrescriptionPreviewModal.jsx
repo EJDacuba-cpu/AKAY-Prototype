@@ -39,7 +39,6 @@ export default function PrescriptionPreviewModal({ prescription, onClose }) {
           <div className="prescription-signature-line border-b border-ink-800" />
           <p className="mt-1">Physician's Signature</p>
         </div>
-        <footer className="mt-8 text-center text-xs text-neutral-500">Generated through AKAY</footer>
       </article>
     </ModalShell>
   );

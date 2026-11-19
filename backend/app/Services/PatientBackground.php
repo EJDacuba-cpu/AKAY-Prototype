@@ -138,6 +138,8 @@ class PatientBackground
         $social = "{$sections}.social.personalSocial";
         $obstetric = "{$sections}.obstetric.obstetric";
         $text = fn (int $max) => ['nullable', 'string', "max:{$max}"];
+        // These notes can be edited in drafts before meeting the final-save limit.
+        $socialNotes = $draft ? ['nullable', 'string'] : $text(500);
 
         $rules = [
             $prefix => ['nullable', "array:sections,reviewed,{$basesKey}"],
@@ -208,10 +210,10 @@ class PatientBackground
             "{$social}.diet.fatty" => ['nullable', 'boolean'],
             "{$social}.diet.sweetDrinks" => ['nullable', 'boolean'],
             "{$social}.diet.lowFruitVeg" => ['nullable', 'boolean'],
-            "{$social}.diet.notes" => $text(500),
+            "{$social}.diet.notes" => $socialNotes,
             "{$social}.sexual" => ['nullable', 'array'],
             "{$social}.sexual.active" => ['nullable', 'string', Rule::in(['yes', 'no', 'declined'])],
-            "{$social}.sexual.notes" => $text(500),
+            "{$social}.sexual.notes" => $socialNotes,
             "{$social}.environment" => ['nullable', 'array'],
             "{$social}.environment.waterSource" => ['nullable', 'string', Rule::in(['Level I', 'Level II', 'Level III', 'Other'])],
             "{$social}.environment.toilet" => ['nullable', 'string', Rule::in([
@@ -219,7 +221,7 @@ class PatientBackground
             ])],
             "{$social}.environment.exposures" => ['nullable', 'array', 'max:3'],
             "{$social}.environment.exposures.*" => ['string', Rule::in(['secondhandSmoke', 'biomassCooking', 'industrialPollution'])],
-            "{$social}.environment.notes" => $text(500),
+            "{$social}.environment.notes" => $socialNotes,
 
             // V. Obstetric & Menstrual History (Female only - enforced in apply())
             $obstetric => ['nullable', 'array'],

@@ -1,3 +1,5 @@
+import { getPatientSex } from "./patientUtils.js";
+
 /**
  * Family planning reference data and the sex rule that applies to it.
  *
@@ -263,3 +265,39 @@ export const PREVIOUS_FP_METHOD_OPTIONS = [
   "NFP-STM — Symptothermal Method",
   "NFP-SDM — Standard Days Method",
 ];
+
+const sharedPreviousMethods = [
+  "None — No previous contraceptive method",
+  "Not recorded — Previous method unknown",
+];
+
+export function getPreviousMethodOptions(patient) {
+  const sex = getPatientSex(patient).toLowerCase();
+  let methods = [];
+  if (sex === "male" || sex === "m") {
+    methods = PREVIOUS_FP_METHOD_OPTIONS.filter((method) =>
+      MALE_APPLICABLE_FP_METHOD_PATTERN.test(normalizeFpMethod(method)),
+    );
+  } else if (sex === "female" || sex === "f") {
+    methods = PREVIOUS_FP_METHOD_OPTIONS.filter(isFemaleOnlyFpMethod);
+  }
+  return [...methods, ...sharedPreviousMethods];
+}
+
+export function getInitialVisitFpMethod(records, parentRecordId) {
+  const visited = new Set();
+  while (parentRecordId) {
+    const id = String(parentRecordId);
+    if (visited.has(id)) return "";
+    visited.add(id);
+
+    const record = records?.find((entry) => String(entry.id) === id);
+    if (!record) return "";
+    parentRecordId = record.parentHealthRecordId || record.parent_health_record_id;
+    if (!parentRecordId) {
+      const familyPlanning = record.familyPlanningData || record.family_planning_data;
+      return familyPlanning?.methodUsed || familyPlanning?.method_used || "";
+    }
+  }
+  return "";
+}

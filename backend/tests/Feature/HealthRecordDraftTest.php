@@ -76,6 +76,24 @@ class HealthRecordDraftTest extends TestCase
         $this->medicineB = $this->medicine('Draft Medicine B', 5, $this->bhcB->id, $this->bhwB->id);
     }
 
+    public function test_family_planning_previous_method_survives_draft_recovery(): void
+    {
+        $methods = ['previousMethod' => 'CON — Condom', 'methodUsed' => 'NSV'];
+        $request = [
+            'patient_id' => $this->patientA->id,
+            'classification' => 'Family Planning',
+            'payload' => ['familyPlanningData' => $methods],
+        ];
+        $id = $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $request)
+            ->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.familyPlanningData.previousMethod', $methods['previousMethod'])
+            ->assertJsonPath('data.payload.familyPlanningData.methodUsed', $methods['methodUsed']);
+    }
+
     public function test_owner_can_create_list_resume_update_and_discard_encrypted_draft(): void
     {
         $payload = $this->draftPayload('Private clinical draft diagnosis.');

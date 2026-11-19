@@ -410,6 +410,58 @@ class PatientBackgroundConsultationTest extends TestCase
         ];
     }
 
+    public function test_social_notes_survive_draft_recovery_and_appear_in_patient_background(): void
+    {
+        $social = [
+            'smoking' => ['status' => 'never'],
+            'diet' => ['highSalt' => true, 'notes' => 'Diet detail'],
+            'sexual' => ['active' => 'no', 'notes' => 'Sexual history detail'],
+            'environment' => ['waterSource' => 'Level III', 'notes' => 'Environment detail'],
+        ];
+        $sections = ['social' => ['personalSocial' => $social]];
+        $draft = $this->actingAs($this->clinician, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftPayload([
+                'backgroundUpdate' => ['sections' => $sections, 'baseRevisions' => ['social' => 0]],
+            ]))->assertCreated()->json('data');
+
+        $restored = $this->getJson("/api/health-record-drafts/{$draft['id']}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections', $sections)
+            ->json('data.payload.backgroundUpdate');
+
+        $this->finalize([
+            'sections' => $restored['sections'],
+            'base_revisions' => $restored['baseRevisions'],
+        ])->assertCreated();
+        $this->assertSame($social, $this->background()['personalSocial']);
+        $this->assertSame(self::DUST, $this->background()['allergies']);
+        $this->getJson("/api/patients/{$this->patient->id}")->assertOk()
+            ->assertJsonPath('data.medical_background.personalSocial', $social);
+    }
+
+    public function test_social_notes_can_be_recovered_from_a_draft_before_meeting_the_final_limit(): void
+    {
+        $longNote = str_repeat('a', 501);
+        $groups = ['diet', 'sexual', 'environment'];
+        $sections = ['social' => ['personalSocial' => array_fill_keys($groups, ['notes' => $longNote])]];
+        $draft = $this->actingAs($this->clinician, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftPayload([
+                'backgroundUpdate' => ['sections' => $sections, 'baseRevisions' => ['social' => 0]],
+            ]))->assertCreated()->json('data');
+
+        $this->getJson("/api/health-record-drafts/{$draft['id']}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections', $sections);
+
+        $this->finalize(['sections' => $sections, 'base_revisions' => ['social' => 0]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(array_map(
+                fn ($group) => "background_update.sections.social.personalSocial.{$group}.notes",
+                $groups,
+            ));
+        $this->assertSame(['smoking' => ['status' => 'never']], $this->background()['personalSocial']);
+    }
+
     public function test_an_encoder_cannot_stage_background_edits_in_a_draft(): void
     {
         $this->actingAs($this->encoder, 'sanctum')
