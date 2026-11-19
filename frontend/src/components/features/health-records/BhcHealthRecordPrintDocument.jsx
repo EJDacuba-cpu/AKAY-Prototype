@@ -13,8 +13,12 @@ import {
 import {
   earlierDraftContinuedNotes,
   earlierDraftNotes,
+  isBhcGeneralV2,
   showsDiagnosisRow,
 } from "../../../utils/consultationWorkflow";
+import { joinDiagnosisNames } from "../../../utils/diagnoses";
+import { savedPrescriptionRows } from "../../../utils/prescriptionPrint";
+import { formatPrescriptionLine } from "../../../utils/rhuPrescriptions";
 import { visitHistoryInformantLine } from "../../../utils/visitHistorySnapshot";
 import { isTbRecord } from "../../../utils/tbRecords";
 import {
@@ -309,6 +313,20 @@ function GcField({ label, value, allowBlankLine = false }) {
 }
 
 function gcMedicationLines(record) {
+  const prescriptions = savedPrescriptionRows(record);
+  if (prescriptions.length) {
+    return {
+      prescribed: prescriptions.map((row) => formatPrescriptionLine({ ...row, instructions: "" })).filter(Boolean).join("\n"),
+      instructions: prescriptions
+        .filter((row) => blankText(row.instructions))
+        .map((row) => {
+          const medicine = [row.medicineName, row.strength].map(blankText).filter(Boolean).join(" ");
+          return [medicine, blankText(row.instructions)].filter(Boolean).join(": ");
+        })
+        .join("\n"),
+    };
+  }
+
   const medicines = getDispensedMedicines(record);
   if (!medicines.length) return { prescribed: "", instructions: "" };
   const prescribed = medicines
@@ -367,22 +385,17 @@ function GeneralConsultationPrintDocument({
   // RHU rarely has assessment_notes; print physical findings here instead
   // (same field as consultation "Physical Findings" / getRecordPhysicalExam).
   const generalExamFindings = blankText(getRecordPhysicalExam(record, ""));
-  const diagnosis = getRecordDiagnosis(record, "");
-  const showDiagnosisRow = showsDiagnosisRow(record, diagnosis);
+  const structuredDiagnosis = isBhcGeneralV2(record) ? "" : joinDiagnosisNames(record.diagnoses);
+  const diagnosisText = structuredDiagnosis || blankText(getRecordDiagnosis(record, ""));
   const hpiFieldLabel = isFollowUpVisit
     ? "Changes since last visit"
     : "Present illness";
-  // Diagnosis: RHU when details would show the row; BHC when a value exists.
-  const diagnosisText = blankText(diagnosis);
-  const printDiagnosis = Boolean(diagnosisText) || (isRhu && showDiagnosisRow);
   const { prescribed, instructions } = gcMedicationLines(record);
   const hasChiefComplaintSection = Boolean(
     blankText(chiefComplaint) || blankText(visitHistoryInformantLine(record)),
   );
   const hasHpiSection = Boolean(blankText(historyOfPresentIllness));
   const recordedByName = blankText(practitioner);
-  // Diagnosis row: show text or a writing line for RHU; BHC only when value exists.
-  const showDiagnosisField = printDiagnosis || Boolean(diagnosisText);
 
   return (
     <article
@@ -477,13 +490,11 @@ function GeneralConsultationPrintDocument({
             value={generalExamFindings}
             allowBlankLine
           />
-          {showDiagnosisField || isRhu ? (
-            <GcField
-              label="Diagnosis"
-              value={diagnosisText}
-              allowBlankLine={isRhu}
-            />
-          ) : null}
+          <GcField
+            label="Diagnosis"
+            value={diagnosisText}
+            allowBlankLine={isRhu}
+          />
         </section>
 
         <section className="gc-print-section">
@@ -504,7 +515,7 @@ function GeneralConsultationPrintDocument({
         </div>
         <div className="gc-print-sig">
           <div className="gc-print-sig-line" />
-          <p className="gc-print-sig-caption">Attending Physician / Signature</p>
+          <p className="gc-print-sig-caption">Physician Signature</p>
         </div>
       </footer>
     </article>

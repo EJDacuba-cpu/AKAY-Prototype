@@ -541,7 +541,7 @@ test("General Consultation print uses the B&W A4 layout without dense clinical e
   assert.match(html, /BP \(mmHg\)/);
   assert.match(html, /Recorded by/);
   assert.match(html, /Midwife Santos/);
-  assert.match(html, /Attending Physician \/ Signature/);
+  assert.match(html, /Physician Signature/);
   assert.match(html, /gc-print-sig-line-name/);
   assert.match(html, /gc-print-writing-line|General exam findings/);
   assert.doesNotMatch(html, /gc-print-sig-role/);
@@ -571,7 +571,27 @@ test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
     ...shared,
     record: {
       ...printRecord,
-      diagnosis: "Acute febrile illness",
+      diagnosis: null,
+      diagnoses: [
+        { id: "dx-1", name: "Acute febrile illness" },
+        { id: "dx-2", name: "Allergic rhinitis" },
+      ],
+      finalized_at: "2026-10-08T01:00:00Z",
+      monitoringData: {
+        consultationWorkflow: "rhu_itr_v1",
+        prescriptions: [{
+          medicineName: "Cetirizine",
+          strength: "10 mg",
+          dose: "1 tablet",
+          route: "Oral",
+          frequency: "Once daily",
+          duration: "Five days",
+          instructions: "Take at bedtime",
+          authorizedQuantity: 5,
+          authorizedUnit: "Tablets",
+        }],
+      },
+      dispensedMedicines: [],
       rural_health_unit_id: 1,
       rural_health_unit: { name: "Rural Health Unit Bulakan" },
     },
@@ -594,6 +614,7 @@ test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
       patientClassification: "General Consultation",
       chiefComplaint: "Fever for two days",
       diagnosis: "",
+      diagnoses: [{ id: "concern-1", name: "Reported fever" }],
       monitoringData: { consultationWorkflow: "bhc_general_v2" },
       barangay_health_center_id: 11,
       barangay_health_center: { name: "Barangay Health Center San Francisco" },
@@ -602,7 +623,9 @@ test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
   }));
   assert.match(rhu, /Rural Health Unit Bulakan/);
   assert.match(rhu, /Diagnosis/);
-  assert.match(rhu, /Acute febrile illness/);
+  assert.match(rhu, /Acute febrile illness; Allergic rhinitis/);
+  assert.match(rhu, /Cetirizine 10 mg/);
+  assert.match(rhu, /Take at bedtime/);
   assert.match(bhcWithDiagnosis, /Barangay Health Center San Francisco/);
   assert.match(bhcWithDiagnosis, /Diagnosis/);
   assert.match(bhcWithDiagnosis, /Acute febrile illness/);
