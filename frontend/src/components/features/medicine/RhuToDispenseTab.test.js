@@ -9,7 +9,6 @@ const page = readFileSync(join(here, "MedicineInventoryPage.jsx"), "utf8");
 const tab = readFileSync(join(here, "RhuToDispenseTab.jsx"), "utf8");
 const review = readFileSync(join(here, "RhuPrescriptionReviewModal.jsx"), "utf8");
 const usageReview = readFileSync(join(here, "RhuServiceUsageReviewModal.jsx"), "utf8");
-const slip = readFileSync(join(here, "RhuPrescriptionPrintSlip.jsx"), "utf8");
 const dispensePagePath = join(here, "..", "..", "..", "pages", "rhu", "RhuToDispense.jsx");
 const app = readFileSync(join(here, "..", "..", "..", "App.jsx"), "utf8");
 
@@ -31,18 +30,23 @@ test("RHU inventory page has no dispense desk and To Dispense is its own route",
   assert.match(app, /<RhuToDispense\s*\/>/);
 });
 
-test("To dispense review shows prescription then print and dispense", () => {
+test("To Dispense review shows prescription and dispense actions without printing", () => {
   assert.match(tab, /Review prescription/);
   assert.match(tab, /Review usage/);
   assert.match(tab, /Service Usage/);
   assert.match(tab, /Pending/);
   assert.match(tab, /Given/);
-  assert.match(usageReview, /Confirm stock usage/);
-  assert.match(review, /Print/);
+  assert.doesNotMatch(review, /usePrintDocument|>Print</);
+  assert.match(review, /onClick=\{onClose\}>Close</);
+  assert.match(review, /disabled=\{given\} onClick=\{onDispense\}/);
   assert.match(review, /Dispense/);
   assert.match(review, /prescriptionText/);
-  assert.match(slip, /prescriptionText/);
-  assert.doesNotMatch(slip, /batch/);
-  assert.doesNotMatch(slip, /quantity/);
   assert.doesNotMatch(tab, /\/rhu\/patients\//);
+});
+
+test("service usage review confirms pending and previously flagged rows", () => {
+  assert.match(usageReview, /row.status === "pending" \|\| row.status === "needs_review"/);
+  assert.match(usageReview, /Confirm stock usage/);
+  assert.doesNotMatch(usageReview, /Mark for review|onNeedsReview/);
+  assert.match(tab, /onConfirm=\{confirmUsage\}/);
 });

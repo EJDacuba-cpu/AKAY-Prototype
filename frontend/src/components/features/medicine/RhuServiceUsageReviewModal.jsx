@@ -19,7 +19,6 @@ export default function RhuServiceUsageReviewModal({
   onRetryCatalog,
   onClose,
   onConfirm,
-  onNeedsReview,
 }) {
   const [pendingDraft, setPendingDraft] = useState(false);
   if (!row) return null;
@@ -39,14 +38,9 @@ export default function RhuServiceUsageReviewModal({
             Cancel
           </ModalButton>
           {pending ? (
-            <>
-              <ModalButton disabled={saving} onClick={onNeedsReview}>
-                Mark for review
-              </ModalButton>
-              <ModalButton variant="primary" disabled={saving || pendingDraft || draft.length !== 1 || Boolean(validateDispenseItems(draft, catalog))} onClick={onConfirm}>
-                Confirm stock usage
-              </ModalButton>
-            </>
+            <ModalButton variant="primary" disabled={saving || pendingDraft || draft.length !== 1 || Boolean(validateDispenseItems(draft, catalog))} onClick={onConfirm}>
+              Confirm stock usage
+            </ModalButton>
           ) : null}
         </ModalFooter>
       }

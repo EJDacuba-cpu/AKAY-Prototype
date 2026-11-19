@@ -254,11 +254,6 @@ export default function RHURecordDetails() {
       <style data-print-shell-style>{BHC_HEALTH_RECORD_PRINT_PAGE_STYLES}</style>
       <div className="min-h-[520px]">
         <div className="print:hidden">
-          {savedPrescriptionRows(record).length > 0 && (
-            <div className="mb-3 flex justify-end">
-              <Button variant="secondary" disabled={loadingPrescription} onClick={openPrescription}>Print Prescription</Button>
-            </div>
-          )}
           <BhcHealthRecordWorkspace
             record={record}
             patient={patient}
@@ -278,6 +273,18 @@ export default function RHURecordDetails() {
             bodyFindingsHistory={<BodyFindingRecordHistory record={record} />}
             onBack={returnToProfile}
             onPrint={handlePrint}
+            printActions={savedPrescriptionRows(record).length > 0 && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={loadingPrescription}
+                onClick={openPrescription}
+                className="h-9"
+              >
+                Print Prescription
+              </Button>
+            )}
           />
           {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name)) && (
             <TbCaseRegistrationPanel key={recordId} recordId={recordId} />

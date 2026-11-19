@@ -1247,15 +1247,6 @@ export async function confirmRhuServiceUsage(usageId, item) {
   return unwrapData(response);
 }
 
-export async function markRhuServiceUsageNeedsReview(usageId, note = "") {
-  if (!usageId) return null;
-  const response = await apiRequest(`/rhu/service-usages/${usageId}/needs-review`, {
-    method: "POST",
-    body: note ? { note } : {},
-  });
-  return unwrapData(response);
-}
-
 export default {
   getBhcHealthRecords,
   getRhuHealthRecords,
@@ -1273,6 +1264,5 @@ export default {
   dispenseHealthRecordMedicines,
   getRhuToDispense,
   confirmRhuServiceUsage,
-  markRhuServiceUsageNeedsReview,
   deleteHealthRecord,
 };

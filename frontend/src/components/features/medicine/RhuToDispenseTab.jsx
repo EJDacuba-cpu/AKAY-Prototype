@@ -15,7 +15,6 @@ import {
   confirmRhuServiceUsage,
   getRhuToDispense,
   dispenseHealthRecordMedicines,
-  markRhuServiceUsageNeedsReview,
 } from "../../../services/healthRecordService";
 import { loadMedicineAvailability } from "../../../services/medicineService";
 
@@ -146,22 +145,6 @@ export default function RhuToDispenseTab() {
       ]);
     } catch (error) {
       toast.error(error?.message || "Unable to confirm stock usage.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function markNeedsReview() {
-    if (!usageReview || saving) return;
-    try {
-      setSaving(true);
-      await markRhuServiceUsageNeedsReview(usageReview.usageId);
-      toast.success("Marked for inventory review.");
-      setUsageReview(null);
-      setUsageDraft([]);
-      await client.invalidateQueries({ queryKey: listKey });
-    } catch (error) {
-      toast.error(error?.message || "Unable to update usage status.");
     } finally {
       setSaving(false);
     }
@@ -300,7 +283,6 @@ export default function RhuToDispenseTab() {
       </div>
       <RhuPrescriptionReviewModal
         row={review}
-        facility={facility}
         onClose={() => setReview(null)}
         onDispense={() => {
           setDispense(review);
@@ -319,7 +301,6 @@ export default function RhuToDispenseTab() {
         onRetryCatalog={() => catalogQuery.refetch()}
         onClose={() => !saving && setUsageReview(null)}
         onConfirm={confirmUsage}
-        onNeedsReview={markNeedsReview}
       />
       {dispense ? (
         <ModalShell
