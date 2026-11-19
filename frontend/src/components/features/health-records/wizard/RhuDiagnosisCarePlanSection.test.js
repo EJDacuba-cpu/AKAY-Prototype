@@ -1,4 +1,5 @@
 import { prescriptionEditorForDraft } from "../../../../utils/prescriptionFields.js";
+import { PROGRAM_CLASSIFICATIONS, consultationProgramRestriction } from "../../../../utils/consultationPrograms.js";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -21,6 +22,7 @@ const cacheDir = mkdtempSync(join(tmpdir(), "akay-rhu-care-plan-"));
 const server = await createServer({ cacheDir, configFile: false, plugins: [react()], optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
 const { default: CarePlan } = await server.ssrLoadModule("/src/components/features/health-records/wizard/RhuDiagnosisCarePlanSection.jsx");
+const { default: ProgramPanel } = await server.ssrLoadModule("/src/components/features/health-records/wizard/ConsultationProgramPanel.jsx");
 const { commitPrescriptionDraft } = await server.ssrLoadModule("/src/components/features/health-records/wizard/RhuPrescriptionsSection.jsx");
 after(async () => {
   await server.close();
@@ -33,6 +35,31 @@ const tb = { id: "tb", name: "TB", nextAction: "none", tbManagement: { diagnosis
 function render(entry = tb, extra = {}) {
   return renderToStaticMarkup(createElement(CarePlan, { diagnoses: [entry], canConfirmTb: true, ...extra }));
 }
+
+test("the shared service panel renders every program and disables ineligible enrollment", () => {
+  function renderButtons(age, selected = []) {
+    const programs = Object.keys(PROGRAM_CLASSIFICATIONS).map((key) => ({
+      key,
+      title: key,
+      restriction: consultationProgramRestriction(key, { age, sex: "Male" }),
+    }));
+    const panel = document.createElement("div");
+    panel.innerHTML = renderToStaticMarkup(createElement(ProgramPanel, { programs, selected }));
+    return [...panel.querySelectorAll("button")];
+  }
+
+  const infantButtons = renderButtons(1);
+  assert.equal(infantButtons.length, 4);
+  assert.deepEqual(infantButtons.map((button) => button.disabled), [true, true, false, false]);
+
+  const adultButtons = renderButtons(30);
+  assert.equal(adultButtons.length, 4);
+  assert.deepEqual(adultButtons.map((button) => button.disabled), [true, false, true, false]);
+
+  const restoredButtons = renderButtons(30, ["EPI"]);
+  const removeButton = restoredButtons.find((button) => button.getAttribute("aria-label") === "Remove EPI from this visit");
+  assert.equal(removeButton?.disabled, false);
+});
 
 test("each diagnosis exposes independent morbidity notifiable and surveillance checkboxes", () => {
   const html = render({ id: "dx1", name: "Dengue", nextAction: "none", reportIn: ["morbidity", "notifiable"] });

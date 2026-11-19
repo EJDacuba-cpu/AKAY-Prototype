@@ -6,9 +6,6 @@ export const INFANT_HIDDEN_SOCIAL_KEYS = ["smoking", "alcohol", "diet", "sexual"
 /** BHC Patient Information fields that Background editing never sends. */
 export const BHC_PROFILE_SOCIAL_KEYS = ["education", "pastOccupations"];
 
-/** Consultation service cards that are not clinically applicable to infants. */
-export const INFANT_HIDDEN_PROGRAMS = ["Maternal", "Family Planning"];
-
 const EMPTY_VITAL = new Set(["", "—", "-", "–"]);
 
 function asDate(value) {
@@ -71,9 +68,4 @@ export function visibleOverviewVitalKeys(keys = [], readingsByKey = {}, { infant
     const display = vitalDisplay(readingsByKey, key);
     return display !== "" && !EMPTY_VITAL.has(display);
   });
-}
-
-export function visibleConsultationPrograms(programs = [], patient, asOfDate) {
-  if (!isInfantAt(patient, asOfDate)) return [...programs];
-  return programs.filter((key) => !INFANT_HIDDEN_PROGRAMS.includes(key));
 }

@@ -54,6 +54,7 @@ import {
 import {
   PROGRAM_CLASSIFICATIONS,
   classificationForPrimaryProgram,
+  consultationProgramRestriction,
   getConsultationPrograms,
   lockProgramsWhilePatientLoads,
   programEnrollLabel,
@@ -72,7 +73,6 @@ import {
   withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
-  MATERNAL_CARE_MALE_ELIGIBILITY,
   getPrenatalEnrollment,
   prenatalProgramCopy,
 } from "../../utils/prenatalEnrollment";
@@ -87,7 +87,6 @@ import {
 import { queryKeys } from "../../utils/queryKeys";
 import { getCareOverview } from "../../services/careOverviewService";
 import { applyRiskFlags, getMaternalRiskFlags } from "../../utils/maternalRisk";
-import { isPatientMale } from "../../utils/programApplicability";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   ASSESSMENT_STEP,
@@ -173,7 +172,7 @@ import { resolveHistoricalFpMethod } from "../../utils/familyPlanning";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
 import { calculateBmi, formatBmi } from "../../utils/bmi";
-import { shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { shouldShowBmiDisplay } from "../../utils/infantVisibility";
 import { areVitalSignsBlank, EMPTY_VITALS_REMINDER, vitalSignsErrors } from "../../utils/vitalSigns";
 import {
   historyErrorMessages,
@@ -1266,10 +1265,12 @@ export default function RhuConsultationWorkspace() {
   }
 
   function handleProgramSelect(key) {
-    if (key === "Maternal" && (!patient || isPatientMale(patient))) return;
+    const program = wizardPrograms.find((item) => item.key === key);
+    if (!program || program.disabled || (program.restriction && !selectedPrograms.includes(key))) return;
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
+    clearErrorsStartingWith(["healthRecordType"]);
     setFollowUpSchedules((current) => pruneServiceSchedules(current, next.selectedPrograms));
     setServiceHandoffs((current) => pruneServiceHandoffs(current, next.selectedPrograms));
     setServiceSupportingLabs((current) => pruneServiceSupportingLabs(current, next.selectedPrograms));
@@ -1324,6 +1325,14 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function saveRecord() {
+    const restrictedService = selectedPrograms
+      .map((key) => consultationProgramRestriction(key, patient, rhuVisitDate))
+      .find(Boolean);
+    if (restrictedService) {
+      goToStepKey(INTERVIEW_STEP);
+      setValidationErrorsAndFocus({ healthRecordType: restrictedService });
+      return;
+    }
     const errors = {
       ...laboratoryErrors(laboratoryTests),
       ...rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }),
@@ -1518,7 +1527,7 @@ export default function RhuConsultationWorkspace() {
   }
 
   const wizardPrograms = lockProgramsWhilePatientLoads(
-    visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), patient).map((key) => {
+    Object.keys(PROGRAM_CLASSIFICATIONS).map((key) => {
       const maternalCopy = key === "Maternal"
         ? prenatalProgramCopy({
             enrolled: prenatalEnrollment.enrolled,
@@ -1532,7 +1541,6 @@ export default function RhuConsultationWorkspace() {
             status: nutritionPanelStatus,
           })
         : null;
-      const male = Boolean(patient) && key === "Maternal" && isPatientMale(patient);
       return {
         key,
         title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
@@ -1540,9 +1548,7 @@ export default function RhuConsultationWorkspace() {
         enrollLabel: maternalCopy?.enrollLabel || nutritionCopy?.enrollLabel || programEnrollLabel(key),
         statusLabel: maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
         statusTone: maternalCopy?.statusTone || nutritionCopy?.statusTone,
-        disabled: male,
-        disabledReason: male ? MATERNAL_CARE_MALE_ELIGIBILITY : "",
-        disabledNote: male ? "Not applicable to this patient" : "",
+        restriction: consultationProgramRestriction(key, patient, rhuVisitDate),
       };
     }),
     !patient,
@@ -2237,6 +2243,7 @@ export default function RhuConsultationWorkspace() {
                   primary={primaryProgram}
                   onSelect={handleProgramSelect}
                   onPrimaryChange={setPrimaryProgram}
+                  error={validationErrors.healthRecordType}
                 />
                 </fieldset>
               )}

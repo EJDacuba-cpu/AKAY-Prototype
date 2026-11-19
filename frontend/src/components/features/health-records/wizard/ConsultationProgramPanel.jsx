@@ -17,7 +17,7 @@ import { Button } from "../../../ui/button";
  */
 
 /**
- * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone, busy, actionLabel, hideAction }]
+ * @param programs  [{ key, title, description, restriction, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone, busy, actionLabel, hideAction }]
  * @param selected  Active program keys
  * @param primary   the primary program key
  * @param onSelect  enrolls the service, or removes it when it is Active
@@ -57,8 +57,11 @@ export default function ConsultationProgramPanel({
       <div className="ehr-consult__services-list">
         {programs.map((program) => {
           const active = selected.includes(program.key);
-          const statusLabel = program.statusLabel || (active ? "Included" : "Not included");
-          const statusTone = program.statusTone || (active ? "active" : "neutral");
+          const disabled = program.disabled || Boolean(program.restriction && !active);
+          const statusLabel = program.restriction && !active
+            ? "Not applicable"
+            : program.statusLabel || (active ? "Included" : "Not included");
+          const statusTone = program.restriction && !active ? "neutral" : program.statusTone || (active ? "active" : "neutral");
           const actionLabel = program.actionLabel || (active ? "Remove" : program.enrollLabel || programEnrollLabel(program.key));
           const badgeClass =
             statusTone === "active"
@@ -89,13 +92,13 @@ export default function ConsultationProgramPanel({
                   {program.description}
                 </p>
               )}
-              {program.disabled && (
+              {(program.disabled || program.restriction) && (
                 <p className="mt-1 text-[11px] italic text-[#6B7280]">
-                  {program.disabledNote || "Not applicable to this patient"}
+                  {program.disabledNote || program.restriction || "Not applicable to this patient"}
                 </p>
               )}
 
-              {active && multiple && (
+              {active && multiple && !program.restriction && (
                 <div className="mt-1.5">
                   {primary === program.key ? (
                     <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
@@ -121,8 +124,8 @@ export default function ConsultationProgramPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={program.disabled}
-                title={program.disabledReason}
+                disabled={disabled}
+                title={program.disabledReason || program.restriction}
                 onClick={() => onSelect(program.key)}
                 aria-label={active && actionLabel === "Remove" ? `Remove ${program.title} from this visit` : actionLabel}
                 aria-pressed={active}

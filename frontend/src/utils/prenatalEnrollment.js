@@ -37,8 +37,6 @@ export function getPrenatalEnrollment(patient = {}, records = [], today = new Da
 }
 
 export const MATERNAL_CARE_PROGRAM_TITLE = "Maternal Care";
-export const MATERNAL_CARE_MALE_ELIGIBILITY =
-  "Maternal Care records are for pregnant clients. This patient is recorded as male.";
 
 export const MATERNAL_SERVICE_LOADING_LABEL = "Loading";
 export const MATERNAL_SERVICE_RETRY_LABEL = "Retry";

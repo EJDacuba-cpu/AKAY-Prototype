@@ -69,7 +69,6 @@ import { calculateBmi, formatBmi } from "../../utils/bmi";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   applyRiskFlags,
-  calculateAgeInYears,
   getMaternalRiskFlags,
   pendingRiskAnnouncements,
 } from "../../utils/maternalRisk";
@@ -79,7 +78,7 @@ import {
   buildPatientRecordDetailsState,
   locationToPath,
 } from "../../utils/profileNavigation";
-import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
+import { PROGRAM_CLASSIFICATIONS, consultationPatientAge, consultationProgramRestriction, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
   EMPTY_MATERNAL_DATA,
   MATERNAL_RISK_KEYS,
@@ -96,7 +95,6 @@ import {
   withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
-  MATERNAL_CARE_MALE_ELIGIBILITY,
   canCompleteMaternalFollowUpResolution,
   continuedCareBlocksProgress,
   getPrenatalEnrollment,
@@ -151,7 +149,7 @@ import {
 } from "../../utils/backgroundUpdate";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
-import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay } from "../../utils/infantVisibility";
 import { defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import {
   informantPayload,
@@ -481,7 +479,6 @@ const EMPTY_IMMUNIZATION_DATA = {
   maternalTtTdEvidence: [],
 };
 
-const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
   "CPAB",
@@ -578,17 +575,6 @@ function normalizePatientStatus(status) {
   return value || "Routine Monitoring";
 }
 
-function getPatientAgeInYears(patient, referenceDate) {
-  if (!patient) return null;
-  const birthdate = getEffectivePatientBirthdate(patient);
-  const ageFromBirthdate = calculateAgeInYears(birthdate, referenceDate);
-  if (ageFromBirthdate !== null) return ageFromBirthdate;
-
-  const ageText = String(patient.age || patient.ageSex || "").trim();
-  const ageMatch = ageText.match(/\d+(?:\.\d+)?/);
-  return ageMatch ? Number(ageMatch[0]) : null;
-}
-
 function getEffectivePatientBirthdate(...sources) {
   for (const source of sources) {
     if (!source || typeof source !== "object") continue;
@@ -616,54 +602,6 @@ function getEffectivePatientBirthdate(...sources) {
   }
 
   return "";
-}
-
-function getImmunizationPatientMode(patient, referenceDate, ...fallbackSources) {
-  const birthdate = getEffectivePatientBirthdate(patient, ...fallbackSources);
-  const agePatient = birthdate ? { ...(patient || {}), birthdate } : patient;
-  const age = getPatientAgeInYears(agePatient, referenceDate);
-  if (age === null) return { age: null, mode: "unknown" };
-  return {
-    age,
-    mode: age >= ADULT_IMMUNIZATION_MIN_AGE_YEARS ? "adult" : "child",
-  };
-}
-
-function getAdultImmunizationMessage(age) {
-  const ageText = Number.isFinite(age) ? `${age}` : "18 or more";
-  return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
-}
-
-function getMaternalEligibility(patient) {
-  if (patient && isPatientMale(patient)) {
-    return {
-      eligible: false,
-      message: MATERNAL_CARE_MALE_ELIGIBILITY,
-    };
-  }
-
-  return { eligible: true, message: "" };
-}
-
-/**
- * Whether Family Planning may be selected for this patient at all.
- *
- * Sex is deliberately NOT considered here. Condom and NSV are male methods, so
- * blocking the whole classification for a male patient made them unreachable.
- * The sex rule lives on the method instead - see getFpMethodRestriction.
- */
-function getFamilyPlanningEligibility(patient, referenceDate) {
-  if (!patient) return { eligible: true };
-
-  const age = getPatientAgeInYears(patient, referenceDate);
-  if (age !== null && age < 10) {
-    return {
-      eligible: false,
-      message: `Family Planning records are intended for adolescent or adult reproductive health clients. This patient is recorded as ${age} years old. Please choose another classification.`,
-    };
-  }
-
-  return { eligible: true };
 }
 
 function getVaccineEntries(data) {
@@ -751,7 +689,6 @@ export default function ConsultationWorkspace() {
   );
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
-  const classificationRef = useRef(null);
   const maternalFollowUpSeededRef = useRef(
     !(routeContext.kind === "continue" && routeContinuedIds.followUpIds.length > 0),
   );
@@ -1444,10 +1381,6 @@ export default function ConsultationWorkspace() {
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
   const showFollowUpMonitoringFields =
     normalizedPatientStatus === "Follow-up Required" && !needsReferral;
-  const immunizationPatientInfo = getImmunizationPatientMode(
-    selectedPatient,
-    dateOfVisit,
-  );
   // Sex restricts the METHOD, not the classification: a male client can be
   // recorded under Condom or NSV, but not under a female-only method.
   const applicableFamilyPlanningMethods = getApplicableFpMethods(
@@ -1458,10 +1391,6 @@ export default function ConsultationWorkspace() {
     method: familyPlanningData.methodUsed,
     isMale: selectedPatientIsMale,
   });
-  const familyPlanningEligibility = getFamilyPlanningEligibility(
-    selectedPatient,
-    dateOfVisit,
-  );
   const immunizationVaccineEntries = getVaccineEntries(immunizationData);
   const epiHistoryByCode = useMemo(
     () =>
@@ -3264,6 +3193,18 @@ export default function ConsultationWorkspace() {
       goToStepKey(REVIEW_STEP);
       return;
     }
+    const restrictedService = selectedPrograms
+      .map((key) => consultationProgramRestriction(key, selectedPatient, dateOfVisit))
+      .find(Boolean);
+    if (restrictedService) {
+      setNoticeModal({
+        title: "Health service unavailable",
+        message: restrictedService,
+        onClose: () => goToStepKey(INTERVIEW_STEP),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
     if (!canFinalize) {
       if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
       const historyErrors = canViewBackground ? stagedHistoryErrors(historyUpdateForSave) : {};
@@ -3312,46 +3253,6 @@ export default function ConsultationWorkspace() {
     if (revealErrorStep(clientErrors)) return;
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
-    if (
-      effectiveHealthRecordType === "Maternal" &&
-      selectedPatientIsMale
-    ) {
-      setNoticeModal({
-        title: "Invalid Classification",
-        message:
-          "Maternal records cannot be created for a patient recorded as male. Please choose another classification.",
-      });
-      return;
-    }
-
-    if (
-      effectiveHealthRecordType === "Immunization" &&
-      immunizationPatientInfo.mode === "adult"
-    ) {
-      setHealthRecordType("");
-      setNoticeModal({
-        title: "Invalid Classification",
-        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
-        onClose: () => classificationRef.current?.focus(),
-        buttonLabel: "Okay",
-      });
-      return;
-    }
-
-    if (
-      effectiveHealthRecordType === "Family Planning" &&
-      !familyPlanningEligibility.eligible
-    ) {
-      setHealthRecordType("");
-      setNoticeModal({
-        title: "Invalid Classification",
-        message: familyPlanningEligibility.message,
-        onClose: () => classificationRef.current?.focus(),
-        buttonLabel: "Okay",
-      });
-      return;
-    }
-
     const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
       ...entry,
       vaccineName:
@@ -3362,7 +3263,7 @@ export default function ConsultationWorkspace() {
     }));
     const preparedImmunizationData = {
       ...immunizationData,
-      patientAgeYears: immunizationPatientInfo.age,
+      patientAgeYears: consultationPatientAge(selectedPatient, dateOfVisit),
       immunizationFormType: "child",
       vaccineEntries: preparedVaccineEntries,
       vaccinesGiven: preparedVaccineEntries,
@@ -4103,12 +4004,9 @@ export default function ConsultationWorkspace() {
 
   // ---- Wizard view models -------------------------------------------------
   // Services stay disabled until the patient they are restricted by has loaded.
-  const wizardPrograms = lockProgramsWhilePatientLoads(visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), selectedPatient, dateOfVisit).map((key) => {
+  const wizardPrograms = lockProgramsWhilePatientLoads(Object.keys(PROGRAM_CLASSIFICATIONS).map((key) => {
     const classification = PROGRAM_CLASSIFICATIONS[key];
-    const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
-      : key === "Family Planning" ? familyPlanningEligibility
-      : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
-      : { eligible: true, message: "" };
+    const restriction = consultationProgramRestriction(key, selectedPatient, dateOfVisit);
     const maternalIncluded = selectedPrograms.includes("Maternal");
     const maternalCopy = key === "Maternal"
       ? prenatalProgramCopy({
@@ -4119,7 +4017,7 @@ export default function ConsultationWorkspace() {
           hideAction: maternalReadonlyActive,
         })
       : null;
-    const maternalControl = key === "Maternal"
+    const maternalControl = key === "Maternal" && !restriction
       ? maternalProgramControl({
           resolving: maternalResolving,
           loadFailed: maternalLoadFailed,
@@ -4135,7 +4033,7 @@ export default function ConsultationWorkspace() {
       : null;
     return {
       key,
-      title: key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
+      title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
       description: key === "Maternal"
         ? maternalCopy.description
         : nutritionCopy?.description
@@ -4143,12 +4041,13 @@ export default function ConsultationWorkspace() {
             ? "Immunization and child vaccination services."
             : RECORD_TYPE_DETAILS[classification]?.description),
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
-      disabled: !eligibility.eligible || Boolean(maternalControl?.disabled),
-      disabledReason: !eligibility.eligible ? eligibility.message : (maternalControl?.disabledReason || eligibility.message),
-      disabledNote: eligibility.eligible ? maternalControl?.disabledNote : undefined,
+      restriction,
+      disabled: Boolean(maternalControl?.disabled),
+      disabledReason: maternalControl?.disabledReason,
+      disabledNote: maternalControl?.disabledNote,
       busy: Boolean(maternalControl?.busy),
       actionLabel: maternalControl?.actionLabel,
-      hideAction: Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
+      hideAction: !restriction && Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
       enrollLabel: maternalCopy?.enrollLabel || nutritionCopy?.enrollLabel,
       statusLabel: maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
       statusTone: maternalCopy?.statusTone || nutritionCopy?.statusTone,
@@ -4240,13 +4139,16 @@ export default function ConsultationWorkspace() {
   }
 
   function handleProgramSelect(option) {
+    const program = wizardPrograms.find((item) => item.key === option);
+    if (!program || program.disabled || program.hideAction) return;
+    if (program.restriction) {
+      if (selectedPrograms.includes(option)) applyProgramSelect(option);
+      return;
+    }
     if (option === "Maternal" && maternalLoadFailed) {
       retryMaternalServiceResolution();
       return;
     }
-    const program = wizardPrograms.find((item) => item.key === option);
-    if (program?.hideAction) return;
-    if (program?.disabled) return;
     if (option === "Maternal" && prenatalEnrollment.enrolled) return;
     if (option === "Maternal" && !selectedPrograms.includes("Maternal")) {
       setPrenatalEnrollmentModal("enroll");
@@ -4257,6 +4159,7 @@ export default function ConsultationWorkspace() {
 
   function confirmPrenatalEnrollment() {
     setPrenatalEnrollmentModal(null);
+    if (selectedPatientLoading || consultationProgramRestriction("Maternal", selectedPatient, dateOfVisit)) return;
     applyProgramSelect("Maternal");
   }
 
@@ -4275,7 +4178,7 @@ export default function ConsultationWorkspace() {
     if (
       !skipSeed
       && routeContext.kind === "continue"
-      && getMaternalEligibility(selectedPatient).eligible
+      && !consultationProgramRestriction("Maternal", selectedPatient, dateOfVisit)
       && shouldSeedMaternalFromPrenatalFollowUp({
         followUps: continuedFollowUps,
         alreadyIncluded: selectedPrograms.includes("Maternal"),
@@ -4287,7 +4190,7 @@ export default function ConsultationWorkspace() {
     setMaternalFollowUpResolved(true);
     // Resolved once when continued follow-ups and enrollment have settled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
+  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, dateOfVisit, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
 
   // The step flow's Next phase: Assessment & Care Plan, then Review & Finalize.
   const isGeneralOnly =
