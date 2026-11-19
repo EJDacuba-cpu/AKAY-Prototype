@@ -206,7 +206,13 @@ export default function PersonalSocialSection({
                 <CheckboxField key={key} label={label} checked={diet[key] === true} onChange={(next) => set("diet", { [key]: next })} />
               ))}
             </div>
-            <TextField label="Diet notes" value={diet.notes} onChange={(next) => set("diet", { notes: next })} />
+            <TextField
+              label="Diet notes"
+              name={field("diet.notes")}
+              error={fieldError("diet.notes")}
+              value={diet.notes}
+              onChange={(next) => set("diet", { notes: next })}
+            />
           </Block>
         </>
       )}
@@ -216,7 +222,13 @@ export default function PersonalSocialSection({
           <Block title="Sexual History">
             <FieldGrid>
               <SelectField label="Sexually active" value={sexual.active} options={SEXUAL_ACTIVE} emptyLabel="Not recorded" onChange={(next) => set("sexual", { active: next })} />
-              <TextField label="Sexual history notes" value={sexual.notes} onChange={(next) => set("sexual", { notes: next })} />
+              <TextField
+                label="Sexual history notes"
+                name={field("sexual.notes")}
+                error={fieldError("sexual.notes")}
+                value={sexual.notes}
+                onChange={(next) => set("sexual", { notes: next })}
+              />
             </FieldGrid>
           </Block>
         </CollapsibleBlock>
@@ -245,7 +257,13 @@ export default function PersonalSocialSection({
             <CheckboxField key={exposure.value} label={exposure.label} checked={exposures.includes(exposure.value)} onChange={(next) => toggleExposure(exposure.value, next)} />
           ))}
         </div>
-        <TextField label="Environment notes" value={environment.notes} onChange={(next) => set("environment", { notes: next })} />
+        <TextField
+          label="Environment notes"
+          name={field("environment.notes")}
+          error={fieldError("environment.notes")}
+          value={environment.notes}
+          onChange={(next) => set("environment", { notes: next })}
+        />
       </Block>
     </div>
   );

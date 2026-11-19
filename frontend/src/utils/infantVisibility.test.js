@@ -2,14 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  INFANT_HIDDEN_PROGRAMS,
   INFANT_HIDDEN_SOCIAL_KEYS,
   infantHiddenSocialKeys,
   isInfantAt,
   omitHiddenSocialKeys,
   shouldShowBmiDisplay,
   shouldShowLifestyleControls,
-  visibleConsultationPrograms,
   visibleOverviewVitalKeys,
 } from "./infantVisibility.js";
 
@@ -110,13 +108,6 @@ test("infant overview keeps pulse and temperature, hides empty BP and SpO2, and 
     visibleOverviewVitalKeys(keys, {}, { infant: false }),
     keys,
   );
-});
-
-test("infant consultation programs hide Maternal and Family Planning and keep EPI", () => {
-  assert.deepEqual(INFANT_HIDDEN_PROGRAMS, ["Maternal", "Family Planning"]);
-  const programs = ["Maternal", "Family Planning", "EPI"];
-  assert.deepEqual(visibleConsultationPrograms(programs, { birthdate: DOB }, daysAfterMonths(4)), ["EPI"]);
-  assert.deepEqual(visibleConsultationPrograms(programs, { birthdate: DOB }, daysAfterMonths(13)), programs);
 });
 
 test("a historical infant visit still hides BMI after the patient is older", () => {

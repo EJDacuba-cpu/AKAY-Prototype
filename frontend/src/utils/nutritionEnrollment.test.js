@@ -32,17 +32,16 @@ test("no nutrition records is Not Enrolled and offers Enroll to Nutrition", () =
   const copy = nutritionProgramCopy({ enrolled: false, included: false, status: "Not Enrolled" });
   assert.equal(copy.title, "Nutrition Care");
   assert.equal(copy.enrollLabel, "Enroll to Nutrition");
-  assert.equal(copy.statusLabel, "Not included");
+  assert.equal(copy.statusLabel, "Not enrolled");
   assert.equal(copy.statusTone, "neutral");
-  assert.match(copy.description, /becomes Active only after this consultation is finalized/i);
+  assert.match(copy.description, /enrollment takes effect when this consultation is finalized/i);
 });
 
-test("selecting Nutrition only marks the visit as included, not Active", () => {
+test("selecting Nutrition displays the Active badge for the visit", () => {
   const copy = nutritionProgramCopy({ enrolled: false, included: true, status: "Not Enrolled" });
   assert.equal(copy.enrollLabel, "Enroll to Nutrition");
-  assert.equal(copy.statusLabel, "Included this visit");
-  assert.equal(copy.statusTone, "included");
-  assert.notEqual(copy.statusLabel, "Active");
+  assert.equal(copy.statusLabel, "Active");
+  assert.equal(copy.statusTone, "active");
 });
 
 test("a finalized nutrition record is Active and offers Continue Nutrition Care", () => {
@@ -63,7 +62,7 @@ test("a finalized nutrition record is Active and offers Continue Nutrition Care"
 
   const continuing = nutritionProgramCopy({ enrolled: true, included: true, status: "Active" });
   assert.equal(continuing.enrollLabel, "Continue Nutrition Care");
-  assert.equal(continuing.statusLabel, "Continuing this visit");
+  assert.equal(continuing.statusLabel, "Active");
 });
 
 test("a category of Nutrition enrolls even when selected programs is an empty list", () => {
@@ -135,11 +134,11 @@ test("a local closure ends the episode and a later nutrition visit starts a new 
 test("Closed is not enrolled for the service button, even if enrolled is still passed", () => {
   const copy = nutritionProgramCopy({ enrolled: true, included: false, status: "Closed" });
   assert.equal(copy.enrollLabel, "Enroll to Nutrition");
-  assert.equal(copy.statusLabel, "Not included");
+  assert.equal(copy.statusLabel, "Not enrolled");
   assert.equal(copy.statusTone, "neutral");
   const included = nutritionProgramCopy({ enrolled: false, included: true, status: "Closed" });
   assert.equal(included.enrollLabel, "Enroll to Nutrition");
-  assert.equal(included.statusLabel, "Included this visit");
+  assert.equal(included.statusLabel, "Active");
 });
 
 test("an API nutrition summary is the source of truth for status", () => {

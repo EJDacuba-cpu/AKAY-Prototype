@@ -1,0 +1,67 @@
+@page bhc-morbidity {
+  size: A4 portrait;
+  margin: 12mm 12mm 14mm;
+
+  @top-left { content: ""; }
+  @top-center { content: ""; }
+  @top-right { content: ""; }
+  @bottom-left { content: ""; }
+  @bottom-center { content: ""; }
+  @bottom-right { content: ""; }
+}
+
+.bhc-morbidity-print { page: bhc-morbidity; }
+
+.bhc-morbidity-print header {
+  margin-bottom: 9mm;
+  text-align: center;
+  break-inside: avoid;
+}
+
+.bhc-morbidity-print h1 {
+  margin: 0 0 2mm;
+  font-size: 18pt;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.bhc-morbidity-print header p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.bhc-morbidity-print .morbidity-total-reported {
+  margin: 0 0 3mm;
+  break-after: avoid;
+}
+
+.bhc-morbidity-print .morbidity-total-reported strong {
+  margin-inline-start: 2mm;
+}
+
+.bhc-morbidity-print .morbidity-number { width: 14mm; }
+.bhc-morbidity-print .morbidity-count { width: 24mm; }
+
+.bhc-morbidity-print table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.bhc-morbidity-print :is(td, th) {
+  padding: 2.25mm 3mm;
+  border-bottom: 1px solid #dedede;
+}
+
+.bhc-morbidity-print thead th {
+  border-block: 1px solid #bdbdbd;
+  background: #f5f5f5;
+}
+
+.bhc-morbidity-print tbody th { font-weight: 400; }
+.bhc-morbidity-print tbody tr:nth-last-child(2) { break-after: avoid; }
+
+.bhc-morbidity-print .morbidity-total-row > * {
+  border-top: 1px solid #bdbdbd;
+  font-weight: 700;
+}

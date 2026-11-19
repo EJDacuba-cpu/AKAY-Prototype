@@ -72,6 +72,24 @@ test('monitoring directory uses its own pending request rather than the unrelate
   assert.doesNotMatch(html, /No monitoring requests\./);
 });
 
+test('monitoring requests render one table with the selected columns and pagination', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  client.setQueryData(queryKeys.monitoringHandoffs(), Array.from({ length: 11 }, (_, index) => ({
+    id: index + 1,
+    status: 'pending_review',
+    condition: { name: 'Test condition' },
+    sending_rhu: { name: 'Test RHU' },
+  })));
+  const html = renderDirectory(client, '/bhc/patients?view=monitoring-requests');
+  client.clear();
+
+  assert.equal((html.match(/<table\b/g) || []).length, 1);
+  assert.equal((html.match(/aria-label="Actions for /g) || []).length, 10);
+  assert.match(html, />Sending RHU<\/th>.*>Patient<\/th>.*>Condition \/ Service<\/th>.*>Status<\/th>.*>Actions<\/th>/);
+  assert.doesNotMatch(html, />Type<\/th>/);
+  assert.equal((html.match(/aria-label="Pagination"/g) || []).length, 1);
+});
+
 test('successful empty patient directory is preserved on a background refresh failure', () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity } } });
   client.setQueryData(emptyDirectoryKey, emptyDirectoryPage);

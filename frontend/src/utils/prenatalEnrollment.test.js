@@ -15,7 +15,6 @@ import {
   isMaternalServiceResolving,
   isPrenatalAssociatedFollowUp,
   maternalProgramControl,
-  prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
   shouldPrefillPrenatalBaseline,
   shouldSeedMaternalFromPrenatalFollowUp,
@@ -27,7 +26,7 @@ function woman() {
   return { sex: "Female", birthdate: "1995-01-01" };
 }
 
-test("no maternal records is not enrolled and offers Include Maternal Care", () => {
+test("no maternal records is not enrolled and offers Enroll to Maternal Care", () => {
   const enrollment = getPrenatalEnrollment(woman(), []);
   assert.equal(enrollment.enrolled, false);
   assert.equal(enrollment.intent, PRENATAL_INTENT_ENROLL);
@@ -35,18 +34,17 @@ test("no maternal records is not enrolled and offers Include Maternal Care", () 
   assert.equal(enrollment.prefill, null);
   const copy = prenatalProgramCopy({ enrolled: false, included: false });
   assert.equal(copy.title, MATERNAL_CARE_PROGRAM_TITLE);
-  assert.equal(copy.enrollLabel, "Include Maternal Care");
-  assert.equal(copy.statusLabel, "Not included");
-  assert.match(copy.description, /becomes Active only after this consultation is finalized/i);
+  assert.equal(copy.enrollLabel, "Enroll to Maternal Care");
+  assert.equal(copy.statusLabel, "Not enrolled");
+  assert.match(copy.description, /enrollment takes effect when this consultation is finalized/i);
 });
 
-test("selecting Maternal Care only marks the visit as included, not Active", () => {
+test("selecting Maternal Care displays Active for the visit while enrollment still awaits finalization", () => {
   const copy = prenatalProgramCopy({ enrolled: false, included: true });
-  assert.equal(copy.enrollLabel, "Include Maternal Care");
-  assert.equal(copy.statusLabel, "Included this visit");
-  assert.notEqual(copy.statusLabel, "Active");
-  assert.equal(copy.statusTone, "included");
-  assert.match(copy.description, /becomes Active only after this consultation is finalized/i);
+  assert.equal(copy.enrollLabel, "Enroll to Maternal Care");
+  assert.equal(copy.statusLabel, "Active");
+  assert.equal(copy.statusTone, "active");
+  assert.match(copy.description, /enrollment takes effect when this consultation is finalized/i);
 });
 
 test("a finalized prenatal record is Active and offers Continue Maternal Care", () => {
@@ -86,8 +84,7 @@ test("including an already enrolled episode continues the visit without a second
   assert.equal(enrollment.intent, PRENATAL_INTENT_CONTINUE);
   const copy = prenatalProgramCopy({ enrolled: true, included: true });
   assert.equal(copy.enrollLabel, "Continue Maternal Care");
-  assert.equal(copy.statusLabel, "Continuing this visit");
-  assert.notEqual(copy.statusLabel, "Active");
+  assert.equal(copy.statusLabel, "Active");
 });
 
 test("a mixed ITR with general findings and prenatal data still enrolls once", () => {
@@ -106,19 +103,6 @@ test("a mixed ITR with general findings and prenatal data still enrolls once", (
   assert.equal(enrollment.enrolled, true);
   assert.equal(enrollment.intent, PRENATAL_INTENT_CONTINUE);
   assert.equal(enrollment.visitCount, 1);
-});
-
-test("enrollment modal copy is confirm-only and differs for include vs continue", () => {
-  const enroll = prenatalEnrollmentModalCopy({ enrolled: false });
-  assert.equal(enroll.title, "Include Maternal Care");
-  assert.equal(enroll.confirmText, "Include in This Visit");
-  assert.match(enroll.description, /becomes Active only after this consultation is finalized/i);
-  assert.match(enroll.description, /prenatal assessment/i);
-  const cont = prenatalEnrollmentModalCopy({ enrolled: true });
-  assert.equal(cont.title, "Continue Maternal Care");
-  assert.equal(cont.confirmText, "Continue This Visit");
-  assert.match(cont.description, /does not start a second enrollment/i);
-  assert.match(cont.description, /prenatal assessment/i);
 });
 
 test("a service:maternal follow-up is prenatal-associated without reading purpose text", () => {
@@ -216,8 +200,8 @@ test("delayed prenatal follow-up loading stays on a neutral Loading state", () =
   const copy = prenatalProgramCopy({ enrolled: false, included: false, resolving: true });
   assert.equal(copy.statusLabel, MATERNAL_SERVICE_LOADING_LABEL);
   assert.equal(copy.enrollLabel, MATERNAL_SERVICE_LOADING_LABEL);
-  assert.notEqual(copy.statusLabel, "Not included");
-  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  assert.notEqual(copy.statusLabel, "Not enrolled");
+  assert.notEqual(copy.enrollLabel, "Enroll to Maternal Care");
   const control = maternalProgramControl({ resolving: true });
   assert.equal(control.disabled, true);
   assert.equal(control.busy, true);
@@ -226,7 +210,7 @@ test("delayed prenatal follow-up loading stays on a neutral Loading state", () =
   assert.equal(canCompleteMaternalFollowUpResolution({ resolving: true }), false);
 });
 
-test("a failed prenatal follow-up load offers Retry instead of Not included", () => {
+test("a failed prenatal follow-up load offers Retry instead of Not enrolled", () => {
   assert.equal(isMaternalServiceLoadFailed({
     continueRoute: true,
     hasFollowUpSelection: true,
@@ -247,8 +231,8 @@ test("a failed prenatal follow-up load offers Retry instead of Not included", ()
   const copy = prenatalProgramCopy({ enrolled: false, included: false, loadFailed: true });
   assert.equal(copy.statusLabel, "Unavailable");
   assert.equal(copy.enrollLabel, MATERNAL_SERVICE_RETRY_LABEL);
-  assert.notEqual(copy.statusLabel, "Not included");
-  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  assert.notEqual(copy.statusLabel, "Not enrolled");
+  assert.notEqual(copy.enrollLabel, "Enroll to Maternal Care");
   const control = maternalProgramControl({ loadFailed: true });
   assert.equal(control.disabled, false);
   assert.equal(control.hideAction, false);
@@ -281,10 +265,10 @@ test("pregnancy baseline prefills only on an explicit prenatal follow-up", () =>
 
 test("Active Maternal Care is read-only on a New Consultation", () => {
   const copy = prenatalProgramCopy({ enrolled: true, included: false, hideAction: true });
-  assert.equal(copy.title, `${MATERNAL_CARE_PROGRAM_TITLE} — Active`);
+  assert.equal(copy.title, MATERNAL_CARE_PROGRAM_TITLE);
   assert.equal(copy.statusLabel, "Active");
   assert.equal(copy.hideAction, true);
-  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  assert.notEqual(copy.enrollLabel, "Enroll to Maternal Care");
   assert.notEqual(copy.enrollLabel, "Continue Maternal Care");
   assert.match(copy.description, /prenatal assessment is added only when continuing/i);
   const control = maternalProgramControl({ hideAction: true });
@@ -310,7 +294,6 @@ test("a selected prenatal follow-up includes Active Maternal Care without Remove
   const copy = prenatalProgramCopy({ enrolled: true, included: true, hideAction: true });
   assert.equal(copy.statusLabel, "Active");
   assert.equal(copy.hideAction, true);
-  assert.notEqual(copy.statusLabel, "Continuing this visit");
   assert.equal(maternalProgramControl({ hideAction: true }).hideAction, true);
 });
 
@@ -372,8 +355,8 @@ test("manual service selection is unchanged for consultations that are not conti
   }), false);
   assert.equal(isMaternalLinkedToPrenatalFollowUp([{ purposeKey: "visit" }], ["Maternal"]), false);
   const copy = prenatalProgramCopy({ enrolled: false, included: false });
-  assert.equal(copy.enrollLabel, "Include Maternal Care");
-  assert.equal(copy.statusLabel, "Not included");
+  assert.equal(copy.enrollLabel, "Enroll to Maternal Care");
+  assert.equal(copy.statusLabel, "Not enrolled");
   assert.equal(maternalProgramControl({}).disabled, false);
   assert.equal(maternalProgramControl({}).hideAction, false);
   assert.equal(canCompleteMaternalFollowUpResolution({}), true);

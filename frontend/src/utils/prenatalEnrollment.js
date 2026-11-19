@@ -1,5 +1,5 @@
 import { getCareTracking } from "./careTracking.js";
-import { getConsultationPrograms } from "./consultationPrograms.js";
+import { getConsultationPrograms, programEnrollLabel } from "./consultationPrograms.js";
 import { servicePurposeKey } from "./followUpSchedules.js";
 import { continuePrenatalPrefill } from "./prenatalForm.js";
 
@@ -37,8 +37,6 @@ export function getPrenatalEnrollment(patient = {}, records = [], today = new Da
 }
 
 export const MATERNAL_CARE_PROGRAM_TITLE = "Maternal Care";
-export const MATERNAL_CARE_MALE_ELIGIBILITY =
-  "Maternal Care records are for pregnant clients. This patient is recorded as male.";
 
 export const MATERNAL_SERVICE_LOADING_LABEL = "Loading";
 export const MATERNAL_SERVICE_RETRY_LABEL = "Retry";
@@ -66,36 +64,30 @@ export function prenatalProgramCopy({
       enrollLabel: MATERNAL_SERVICE_RETRY_LABEL,
       statusLabel: "Unavailable",
       statusTone: "neutral",
-      description: "Maternal Care could not be loaded. Retry before including or removing this service.",
+      description: "Maternal Care could not be loaded. Retry to load the enrollment status.",
       hideAction: false,
     };
   }
   if (hideAction && enrolled) {
     return {
-      title: `${MATERNAL_CARE_PROGRAM_TITLE} — Active`,
+      title: MATERNAL_CARE_PROGRAM_TITLE,
       enrollLabel: "",
       statusLabel: "Active",
       statusTone: "active",
       description: included
-        ? "Active Maternal Care is included with the selected prenatal follow-up. This visit does not start a second enrollment."
+        ? "This prenatal follow-up continues the existing Maternal Care enrollment."
         : "Active Maternal Care from a finalized consultation. A prenatal assessment is added only when continuing a selected prenatal follow-up.",
       hideAction: true,
     };
   }
   return {
     title: MATERNAL_CARE_PROGRAM_TITLE,
-    enrollLabel: enrolled ? "Continue Maternal Care" : "Include Maternal Care",
-    statusLabel: enrolled
-      ? included
-        ? "Continuing this visit"
-        : "Active"
-      : included
-        ? "Included this visit"
-        : "Not included",
-    statusTone: enrolled ? "active" : included ? "included" : "neutral",
+    enrollLabel: programEnrollLabel("Maternal", { enrolled }),
+    statusLabel: enrolled || included ? "Active" : "Not enrolled",
+    statusTone: enrolled || included ? "active" : "neutral",
     description: enrolled
       ? "Active Maternal Care from a finalized consultation. Continue this visit without starting a second enrollment."
-      : "Optional. Maternal Care becomes Active only after this consultation is finalized.",
+      : "New Maternal Care enrollment takes effect when this consultation is finalized.",
     hideAction: false,
   };
 }
@@ -185,9 +177,8 @@ export function isMaternalLinkedToPrenatalFollowUp(followUps = [], selectedProgr
 }
 
 /**
- * Maternal Care controls on the service panel. Loading disables Include;
- * a failed load leaves Retry clickable; Active enrollment hides Include,
- * Continue, and Remove.
+ * Maternal Care controls on the service panel. Loading disables the action.
+ * A failed load offers Retry. An active enrollment can be displayed as read-only.
  */
 export function maternalProgramControl({
   resolving = false,
@@ -240,24 +231,4 @@ export function continuedCareBlocksProgress({
   loadFailed = false,
 } = {}) {
   return Boolean(followUpsLoading || resolving || loadFailed);
-}
-
-/**
- * Confirm-only enrollment modal. No pregnancy fields are collected here.
- */
-export function prenatalEnrollmentModalCopy({ enrolled } = {}) {
-  if (enrolled) {
-    return {
-      title: "Continue Maternal Care",
-      description:
-        "This patient already has active Maternal Care. This visit adds the next prenatal assessment and does not start a second enrollment.",
-      confirmText: "Continue This Visit",
-    };
-  }
-  return {
-    title: "Include Maternal Care",
-    description:
-      "Maternal Care will be included in this consultation. It becomes Active only after this consultation is finalized. Registration and Patient Background stay on the existing steps. Pregnancy details are recorded on the prenatal assessment.",
-    confirmText: "Include in This Visit",
-  };
 }

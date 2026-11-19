@@ -6,7 +6,7 @@
  * are restored as a `visit` row.
  */
 
-import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
+import { consultationProgramRestriction, getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 
 export const VISIT_PURPOSE_KEY = "visit";
 
@@ -45,6 +45,24 @@ export function isScheduledServiceFollowUp(task = {}) {
   }
   if (key && key !== VISIT_PURPOSE_KEY) return false;
   return programsFromFollowUp(task).length > 0;
+}
+
+const AUTO_INCLUDED_SERVICES = ["Family Planning", "EPI", "Nutrition"];
+
+export function getContinuedServicePrograms(followUps, patient, visitDate) {
+  const programs = new Set();
+  for (const task of followUps) {
+    const key = text(task.purposeKey);
+    const candidates = !key || key === VISIT_PURPOSE_KEY
+      ? programsFromFollowUp(task)
+      : AUTO_INCLUDED_SERVICES.filter((program) => servicePurposeKey(program) === key);
+    for (const program of candidates) {
+      if (AUTO_INCLUDED_SERVICES.includes(program) && !consultationProgramRestriction(program, patient, visitDate)) {
+        programs.add(program);
+      }
+    }
+  }
+  return [...programs];
 }
 
 export function serviceFollowUpProgram(task = {}) {

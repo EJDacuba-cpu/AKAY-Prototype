@@ -1,4 +1,5 @@
 import { programEnrollLabel } from "../../../../utils/consultationPrograms";
+import ButtonSpinner from "../../../common/loading/ButtonSpinner";
 import { Button } from "../../../ui/button";
 
 /**
@@ -7,8 +8,8 @@ import { Button } from "../../../ui/button";
  * it is saved with the consultation. No selection is a general consultation.
  *
  * The services (Maternal Care, Family Planning, EPI) render as one flat list.
- * Each starts "Not included"; choosing it makes it "Included" for this visit
- * and the same button becomes Remove, which puts it back. The
+ * Choosing a service marks it "Active" for this visit. A removable service
+ * has a Remove button. The
  * status badge sits at the top right of the card. The service's form is a screen of
  * its own after Physical Examination, so the panel has no form button.
  * Conditions such as TB are not services here - they are monitored through the
@@ -17,7 +18,7 @@ import { Button } from "../../../ui/button";
  */
 
 /**
- * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone, busy, actionLabel, hideAction }]
+ * @param programs  [{ key, title, description, restriction, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone, busy, actionLabel, hideAction }]
  * @param selected  Active program keys
  * @param primary   the primary program key
  * @param onSelect  enrolls the service, or removes it when it is Active
@@ -57,15 +58,16 @@ export default function ConsultationProgramPanel({
       <div className="ehr-consult__services-list">
         {programs.map((program) => {
           const active = selected.includes(program.key);
-          const statusLabel = program.statusLabel || (active ? "Included" : "Not included");
-          const statusTone = program.statusTone || (active ? "active" : "neutral");
+          const disabled = program.busy || program.disabled || Boolean(program.restriction && !active);
+          const statusLabel = program.restriction && !active
+            ? "Not applicable"
+            : program.statusLabel || (active ? "Active" : "Not enrolled");
+          const statusTone = program.restriction && !active ? "neutral" : program.statusTone || (active ? "active" : "neutral");
           const actionLabel = program.actionLabel || (active ? "Remove" : program.enrollLabel || programEnrollLabel(program.key));
           const badgeClass =
             statusTone === "active"
               ? "bg-[#DCFCE7] text-[#166534]"
-              : statusTone === "included"
-                ? "bg-[#E0F2FE] text-[#075985]"
-                : "bg-[#F3F4F6] text-[#374151]";
+              : "bg-[#F3F4F6] text-[#374151]";
           return (
             <div
               key={program.key}
@@ -89,13 +91,13 @@ export default function ConsultationProgramPanel({
                   {program.description}
                 </p>
               )}
-              {program.disabled && (
+              {(program.disabled || program.restriction) && (
                 <p className="mt-1 text-[11px] italic text-[#6B7280]">
-                  {program.disabledNote || "Not applicable to this patient"}
+                  {program.disabledNote || program.restriction || "Not applicable to this patient"}
                 </p>
               )}
 
-              {active && multiple && (
+              {active && multiple && !program.restriction && (
                 <div className="mt-1.5">
                   {primary === program.key ? (
                     <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
@@ -106,6 +108,7 @@ export default function ConsultationProgramPanel({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      disabled={program.busy}
                       onClick={() => onPrimaryChange(program.key)}
                       aria-label={`Make ${program.title} primary`}
                       className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
@@ -121,17 +124,19 @@ export default function ConsultationProgramPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={program.disabled}
-                title={program.disabledReason}
+                disabled={disabled}
+                title={program.disabledReason || program.restriction}
                 onClick={() => onSelect(program.key)}
                 aria-label={active && actionLabel === "Remove" ? `Remove ${program.title} from this visit` : actionLabel}
                 aria-pressed={active}
+                aria-busy={program.busy || undefined}
                 className={`mt-2 h-auto min-h-9 w-full whitespace-normal rounded-none border bg-white px-3 py-1.5 text-center text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white ${
                   active && actionLabel === "Remove"
                     ? "border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB]"
                     : "border-[#DC2626] text-[#DC2626] hover:bg-red-50"
                 }`}
               >
+                {program.busy && <ButtonSpinner />}
                 {actionLabel}
               </Button>
               )}

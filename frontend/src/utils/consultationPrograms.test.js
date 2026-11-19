@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, classificationForPrimaryProgram, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, classificationForPrimaryProgram, consultationProgramRestriction, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel, isNutritionRecord } from "./healthRecordPrograms.js";
-import { visibleConsultationPrograms } from "./infantVisibility.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
   assert.deepEqual(toggleConsultationProgram(["Maternal", "EPI"], "Maternal", "Maternal"), { selectedPrograms: ["EPI"], primaryProgram: "EPI" });
@@ -21,20 +20,19 @@ test("the selectable programs", () => {
   assert.equal(PROGRAM_CLASSIFICATIONS.Nutrition, "Nutrition");
 });
 
-test("infant consultations hide Maternal and Family Planning and keep Child Health / EPI and Nutrition", () => {
-  const programs = Object.keys(PROGRAM_CLASSIFICATIONS);
-  assert.deepEqual(
-    visibleConsultationPrograms(programs, { birthdate: "2026-06-01" }, "2026-10-04"),
-    ["EPI", "Nutrition"],
-  );
-  assert.deepEqual(
-    visibleConsultationPrograms(programs, { birthdate: "2021-01-01" }, "2026-10-04"),
-    programs,
-  );
-  assert.deepEqual(
-    visibleConsultationPrograms(programs, { birthdate: "1990-01-01" }, "2026-10-04"),
-    programs,
-  );
+test("consultation enrollment restrictions share the same age and sex rules", () => {
+  const restricted = (patient, visitDate) => Object.keys(PROGRAM_CLASSIFICATIONS)
+    .filter((key) => consultationProgramRestriction(key, patient, visitDate));
+  assert.deepEqual(restricted({ age: 0, sex: "Female" }), ["Maternal", "Family Planning"]);
+  assert.deepEqual(restricted({ age: 1, sex: "Male" }), ["Maternal", "Family Planning"]);
+  assert.deepEqual(restricted({ age: 2, sex: "Female" }), ["Maternal", "Family Planning", "EPI"]);
+  assert.deepEqual(restricted({ age: 10, sex: "Female" }), ["EPI"]);
+  assert.deepEqual(restricted({ age: 35, sex: "Male" }), ["Maternal", "EPI"]);
+  assert.deepEqual(restricted({ ageSex: "14 months / Male" }), ["Maternal", "Family Planning"]);
+
+  const patient = { birthdate: "2024-11-19", age: 2, sex: "Female" };
+  assert.deepEqual(restricted(patient, "2026-11-18"), ["Maternal", "Family Planning"]);
+  assert.deepEqual(restricted(patient, "2026-11-19"), ["Maternal", "Family Planning", "EPI"]);
 });
 
 test("legacy classifications still work and explicit general visits stay general", () => {
@@ -79,6 +77,16 @@ test("every service is disabled while the patient is still loading", () => {
   assert.ok(locked.every((program) => program.disabled));
   assert.ok(locked.every((program) => program.disabledReason === PATIENT_LOADING_REASON));
   assert.ok(locked.every((program) => program.disabledNote === PATIENT_LOADING_REASON));
+  assert.ok(locked.every((program) => program.busy && program.actionLabel === "Loading"));
+});
+
+test("linked follow-ups show loading on the service buttons until the selection resolves", () => {
+  const programs = [{ key: "EPI", statusLabel: "Active" }, { key: "Nutrition" }];
+  const locked = lockProgramsWhilePatientLoads(programs, false, true);
+  assert.ok(locked.every((program) => program.disabled && program.busy));
+  assert.ok(locked.every((program) => program.statusLabel === "Loading"));
+  assert.ok(locked.every((program) => program.disabledNote === "Loading linked follow-ups..."));
+  assert.equal(lockProgramsWhilePatientLoads(programs, false, false), programs);
 });
 
 test("once the patient has loaded, eligibility is left exactly as computed", () => {
@@ -87,8 +95,8 @@ test("once the patient has loaded, eligibility is left exactly as computed", () 
 });
 
 test("each service has its own enroll button label", () => {
-  assert.equal(programEnrollLabel("Maternal"), "Include Maternal Care");
-  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Include Maternal Care");
+  assert.equal(programEnrollLabel("Maternal"), "Enroll to Maternal Care");
+  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Enroll to Maternal Care");
   assert.equal(programEnrollLabel("Maternal", { enrolled: true }), "Continue Maternal Care");
   assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
   assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");

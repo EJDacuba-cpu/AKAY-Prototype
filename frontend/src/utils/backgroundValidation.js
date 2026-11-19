@@ -131,6 +131,16 @@ function validateSocial(slice, errors) {
   const sexual = social.sexual || {};
   const environment = social.environment || {};
 
+  for (const [group, label] of [
+    ["diet", "Diet notes"],
+    ["sexual", "Sexual history notes"],
+    ["environment", "Environment notes"],
+  ]) {
+    if (Array.from(text(social[group]?.notes)).length > 500) {
+      errors[`${base}.${group}.notes`] = `${label} must be 500 characters or fewer.`;
+    }
+  }
+
   setError(errors, `${base}.education.level`, enumError(education.level, [
     "None", "Elementary", "High School", "Senior High School", "Vocational", "College", "Postgraduate",
   ], "education level"));

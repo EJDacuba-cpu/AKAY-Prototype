@@ -9,11 +9,11 @@ function normalizeDraft(draft = {}) {
     editorExpiresAt: draft.editor_expires_at || "",
     returnNote: draft.return_note || "",
     id: String(draft.id || ""),
-    // Identity of the CONSULTATION (not the draft). Null for drafts created
-    // before it existed; those fall back to id/patient matching.
+    // Older RHU drafts can fall back to the server-assigned visit ID.
     consultationUuid: draft.consultation_uuid
       ? String(draft.consultation_uuid).toLowerCase()
       : "",
+    rhuVisitId: draft.rhu_visit_id ? String(draft.rhu_visit_id) : "",
     patient: {
       id: draft.patient?.id ? String(draft.patient.id) : "",
       label: draft.patient?.label || "Patient",
@@ -50,7 +50,12 @@ export async function listHealthRecordDrafts({ draftOwnerContext } = {}) {
 export async function lookupHealthRecordDraft({ patientId, rhuVisitId, draftOwnerContext }) {
   const query = new URLSearchParams({ patient_id: String(patientId), ...(rhuVisitId ? { rhu_visit_id: String(rhuVisitId) } : {}) });
   const response = await apiRequest(`/health-record-drafts/lookup?${query}`, draftOwnerContext ? { draftOwnerContext } : {});
-  return response?.data ? normalizeDraft(response.data) : null;
+  if (response?.data === null) return null;
+  const draft = normalizeDraft(response?.data);
+  if (!draft.id || !Number.isInteger(draft.version) || draft.version < 1) {
+    throw new Error("The server did not confirm whether this consultation has a saved draft. Please try again.");
+  }
+  return draft;
 }
 
 export async function createHealthRecordDraft({
@@ -73,6 +78,10 @@ export async function getHealthRecordDraft(draftId, { claim = true, draftOwnerCo
   const options = draftOwnerContext ? { draftOwnerContext } : {};
   const response = await apiRequest(`/health-record-drafts/${draftId}`, options);
   const draft = normalizeDraft(unwrapData(response));
+  if (draft.id !== String(draftId) || !Number.isInteger(draft.version) || draft.version < 1
+    || !draft.payload || typeof draft.payload !== "object") {
+    throw new Error("The server did not return the saved consultation. Please try again.");
+  }
   if (!draft.canEdit || !claim) return draft;
   const claimed = await transitionDraft(draftId, "claim", draft.version, undefined, options);
   return { ...draft, ...claimed, payload: draft.payload, medicineSelections: draft.medicineSelections };
@@ -80,7 +89,11 @@ export async function getHealthRecordDraft(draftId, { claim = true, draftOwnerCo
 
 export async function transitionDraft(draftId, action, version, note, options = {}) {
   const response = await apiRequest(`/health-record-drafts/${draftId}/transition`, { ...options, method: "POST", body: { action, version, note } });
-  return normalizeDraft(unwrapData(response));
+  const draft = normalizeDraft(unwrapData(response));
+  if (draft.id !== String(draftId) || !Number.isInteger(draft.version) || draft.version <= version) {
+    throw new Error("The server did not confirm the editing session. Please try again.");
+  }
+  return draft;
 }
 
 export async function updateHealthRecordDraft(

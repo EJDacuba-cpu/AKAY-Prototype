@@ -19,7 +19,6 @@ export function verificationStatusLabel(status) {
 export function compareIdentityFields(source, candidate) {
   if (!source || !candidate) return [];
   const rows = [
-    ["Patient ID", source.id, candidate.id],
     ["Name", fullName(source), fullName(candidate)],
     ["Birthdate", source.birthdate || source.birthDate || "—", candidate.birthdate || candidate.birthDate || "—"],
     ["Sex", source.sex || "—", candidate.sex || "—"],

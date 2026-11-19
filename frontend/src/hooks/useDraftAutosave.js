@@ -103,6 +103,7 @@ export default function useDraftAutosave({
   updateDraft = defaultUpdateDraft,
   consultationUuid = "",
   rhuVisitId = null,
+  draftOwnerContext,
   localDraft = null,
   buildLocalRecord = null,
   unsyncedRecovery = false,
@@ -134,6 +135,7 @@ export default function useDraftAutosave({
   const inFlightRef = useRef(false);
   const rerunRef = useRef(false);
   const pausedRef = useRef(false);
+  const rejectedSerializedRef = useRef(null);
   const enabledRef = useRef(false);
   const debounceTimerRef = useRef(null);
   const retryTimerRef = useRef(null);
@@ -249,18 +251,18 @@ export default function useDraftAutosave({
   }, []);
 
   const scheduleRetry = useCallback(
-    (attempts) => {
+    (attempts, retryAfter = 0) => {
       clearRetryTimer();
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         void runSaveRef.current?.("retry");
-      }, backoffDelay(attempts));
+      }, Math.max(backoffDelay(attempts), retryAfter * 1000));
     },
     [clearRetryTimer],
   );
 
   const handleSaveError = useCallback(
-    (err) => {
+    (err, attempted) => {
       const httpStatus = Number(err?.status);
       const code = err?.code || err?.payload?.code || "";
       // Nothing was confirmed, so no attempt is still "syncing". Every branch
@@ -288,7 +290,8 @@ export default function useDraftAutosave({
       if (
         httpStatus === 409 &&
         (code === DRAFT_VERSION_CONFLICT_CODE ||
-          code === DRAFT_CONSULTATION_EXISTS_CODE)
+          code === DRAFT_CONSULTATION_EXISTS_CODE ||
+          code === "DRAFT_EDITOR_LEASE_ENDED")
       ) {
         pausedRef.current = true;
         pendingSaveRef.current = null;
@@ -308,9 +311,21 @@ export default function useDraftAutosave({
       }
 
       if (httpStatus === 422) {
-        pausedRef.current = true;
+        rejectedSerializedRef.current = attempted;
         pendingSaveRef.current = null;
         clearRetryTimer();
+        // A newer edit may already be waiting while the rejected request was in flight.
+        const latest = serializePayload(latestPayloadRef.current);
+        if (latest !== attempted) {
+          const stillDirty = latest !== lastSavedSerializedRef.current;
+          rerunRef.current = stillDirty;
+          if (isMountedRef.current) {
+            setError(null);
+            setHasPendingChanges(stillDirty);
+            setStatus(stillDirty ? "pending" : (lastSavedAtRef.current ? "saved" : "idle"));
+          }
+          return;
+        }
         clearDebounceTimer();
         if (isMountedRef.current) {
           setStatus("error");
@@ -325,7 +340,7 @@ export default function useDraftAutosave({
       }
 
       if (httpStatus === 429) {
-        // Rate limited: back off and retry silently, never surface as an error.
+        offlineRef.current = false;
         const attempts = (pendingSaveRef.current?.attempts ?? 0) + 1;
         pendingSaveRef.current = {
           payload: latestPayloadRef.current,
@@ -333,10 +348,11 @@ export default function useDraftAutosave({
           attempts,
         };
         if (isMountedRef.current) {
-          setStatus("saving");
+          setStatus("retrying");
+          setError(null);
           setHasPendingChanges(true);
         }
-        scheduleRetry(attempts);
+        scheduleRetry(attempts, err.retryAfter);
         return;
       }
 
@@ -369,8 +385,7 @@ export default function useDraftAutosave({
       const params = paramsRef.current;
       const epoch = sessionEpochRef.current;
       if (!params.enabled || finalizedRef.current) return;
-      // Conflict/validation pause halts autosave until reload; manual save overrides.
-      if (pausedRef.current) return;
+      if (pausedRef.current || retryTimerRef.current) return;
       if (inFlightRef.current) {
         rerunRef.current = true;
         return;
@@ -379,12 +394,14 @@ export default function useDraftAutosave({
       const payloadToSave = latestPayloadRef.current;
       const nextSerialized = serializePayload(payloadToSave);
       if (!nextSerialized) return;
+      if (nextSerialized === rejectedSerializedRef.current) return;
 
       // Skip entirely if nothing changed since the last successful save.
       if (nextSerialized === lastSavedSerializedRef.current) {
         pendingSaveRef.current = null;
         if (isMountedRef.current) {
           setHasPendingChanges(false);
+          setError(null);
           setStatus(lastSavedAtRef.current ? "saved" : "idle");
         }
         return;
@@ -412,62 +429,29 @@ export default function useDraftAutosave({
         if (hasLocalCopyRef.current) setSyncStatus("syncing");
       }
 
+      const owner = params.draftOwnerContext || (params.vault.prepareLocalDraft && params.localDraft?.ownerKey);
       const request = {
         consultationUuid: params.consultationUuid || "",
         patientId: Number(params.patientId),
         classification: params.classification,
         payload: payloadToSave,
         ...(params.rhuVisitId ? { rhuVisitId: Number(params.rhuVisitId) } : {}),
-        ...(params.vault.prepareLocalDraft && params.localDraft ? { draftOwnerContext: params.localDraft.ownerKey } : {}),
+        ...(owner ? { draftOwnerContext: owner } : {}),
       };
 
       try {
-        let saved;
-        if (current) {
-          saved = await params.updateDraft(current.id, {
-            ...request,
-            version: current.version,
-          });
-        } else {
-          try {
-            saved = await params.createDraft(request);
-          } catch (createErr) {
-            // Server already has this consultation's draft (race, reconnect, or
-            // remount) but this tab never learned the public id. Adopt it and
-            // continue with an update instead of pausing forever on conflict.
-            const code = createErr?.code || createErr?.payload?.code || "";
-            const existingId = createErr?.payload?.draft_id;
-            const existingVersion = createErr?.payload?.version;
-            if (
-              Number(createErr?.status) === 409 &&
-              code === DRAFT_CONSULTATION_EXISTS_CODE &&
-              existingId != null &&
-              existingVersion != null
-            ) {
-              draftRef.current = {
-                id: String(existingId),
-                version: Number(existingVersion),
-              };
-              if (isMountedRef.current) {
-                params.onDraftSaved?.({
-                  id: draftRef.current.id,
-                  version: draftRef.current.version,
-                  lastSavedAt: null,
-                });
-              }
-              saved = await params.updateDraft(draftRef.current.id, {
-                ...request,
-                version: draftRef.current.version,
-              });
-            } else {
-              throw createErr;
-            }
-          }
-        }
+        const saved = current
+          ? await params.updateDraft(current.id, { ...request, version: current.version })
+          : await params.createDraft(request);
 
         if (epoch !== sessionEpochRef.current || finalizedRef.current) return;
+        if (!saved?.id || !Number.isInteger(saved.version) || saved.version < 1
+          || (current && (saved.id !== current.id || saved.version <= current.version))) {
+          throw new Error("The server did not confirm this draft save. Please try again.");
+        }
 
         lastSavedSerializedRef.current = nextSerialized;
+        rejectedSerializedRef.current = null;
         draftRef.current = { id: saved.id, version: saved.version };
         lastSavedAtRef.current = saved.lastSavedAt || null;
         pendingSaveRef.current = null;
@@ -484,17 +468,19 @@ export default function useDraftAutosave({
         }
         if (epoch !== sessionEpochRef.current || finalizedRef.current) return;
 
+        const stillDirty = serializePayload(latestPayloadRef.current) !== nextSerialized;
+        if (stillDirty && !debounceTimerRef.current) rerunRef.current = true;
         if (isMountedRef.current) {
           setLastSavedAt(saved.lastSavedAt || null);
           setConflict(null);
           setError(null);
-          setHasPendingChanges(false);
-          setStatus("saved");
-          setSyncStatus(hadLocalCopy ? "synced" : "idle");
+          setHasPendingChanges(stillDirty);
+          setStatus(stillDirty ? "pending" : "saved");
+          setSyncStatus(hadLocalCopy && !stillDirty ? "synced" : "idle");
         }
         params.onDraftSaved?.(saved);
       } catch (err) {
-        if (epoch === sessionEpochRef.current) handleSaveError(err);
+        if (epoch === sessionEpochRef.current) handleSaveError(err, nextSerialized);
       } finally {
         if (epoch === sessionEpochRef.current) {
           inFlightRef.current = false;
@@ -529,6 +515,7 @@ export default function useDraftAutosave({
       classification,
       consultationUuid,
       rhuVisitId,
+      draftOwnerContext,
       onDraftSaved,
       createDraft,
       updateDraft,
@@ -568,6 +555,7 @@ export default function useDraftAutosave({
     if (!incoming) {
       if (current) {
         draftRef.current = null;
+        rejectedSerializedRef.current = null;
         lastSavedSerializedRef.current = serializePayload(
           latestPayloadRef.current,
         );
@@ -593,6 +581,7 @@ export default function useDraftAutosave({
 
     if (isNewIdentity || isServerAdvanced) {
       draftRef.current = { id: incoming.id, version: incoming.version };
+      rejectedSerializedRef.current = null;
       // Restored form matches the server draft, so make it the new baseline.
       lastSavedSerializedRef.current = serializePayload(latestPayloadRef.current);
       lastSavedAtRef.current = incoming.lastSavedAt || null;
@@ -651,11 +640,17 @@ export default function useDraftAutosave({
     const changed = serialized !== lastSavedSerializedRef.current;
     if (isMountedRef.current) setHasPendingChanges(changed);
 
-    if (!changed || pausedRef.current) {
+    if (pausedRef.current || serialized === rejectedSerializedRef.current) {
       clearDebounceTimer();
       return undefined;
     }
 
+    if (rejectedSerializedRef.current !== null) {
+      rejectedSerializedRef.current = null;
+      setError(null);
+      setStatus(changed ? "pending" : lastSavedAtRef.current ? "saved" : "idle");
+    }
+    if (!changed) return clearDebounceTimer();
     clearDebounceTimer();
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
@@ -691,7 +686,7 @@ export default function useDraftAutosave({
   // Flush immediately when the connection returns, bypassing backoff.
   useEffect(() => {
     function handleOnline() {
-      clearRetryTimer();
+      if (offlineRef.current) clearRetryTimer();
       const stillDirty =
         pendingSaveRef.current ||
         hasLocalCopyRef.current ||
@@ -749,6 +744,7 @@ export default function useDraftAutosave({
       draftRef.current = null;
       pendingSaveRef.current = null;
       lastSavedSerializedRef.current = "";
+      rejectedSerializedRef.current = null;
       lastSavedAtRef.current = null;
       inFlightRef.current = false;
       rerunRef.current = false;
@@ -797,19 +793,14 @@ export default function useDraftAutosave({
    */
   const saveNow = useCallback(async () => {
     clearDebounceTimer();
-    // Manual override: retry after a sticky error pause. Hard conflict /
-    // validation pauses still require an explicit user decision.
-    if (pausedRef.current) {
-      if (conflict || (error && error.type === "validation")) return false;
-      pausedRef.current = false;
-      if (isMountedRef.current) setError(null);
-    }
+    if (pausedRef.current || serializePayload(latestPayloadRef.current) === rejectedSerializedRef.current) return false;
+    if (offlineRef.current) clearRetryTimer();
     await runSaveRef.current?.("manual");
     return (
       serializePayload(latestPayloadRef.current) ===
       lastSavedSerializedRef.current
     );
-  }, [clearDebounceTimer, conflict, error]);
+  }, [clearDebounceTimer, clearRetryTimer]);
 
   /**
    * Save before the page is left. Unlike saveNow, this settles only once any
@@ -832,18 +823,13 @@ export default function useDraftAutosave({
     };
 
     await waitForInFlight();
+    if (pausedRef.current) return false;
     if (isSaved()) return true;
-    if (pausedRef.current) {
-      if (conflict || (error && error.type === "validation")) return false;
-      // Transient sticky pause: allow one forced leave-save (manual override).
-      pausedRef.current = false;
-      if (isMountedRef.current) setError(null);
-    }
 
     await runSaveRef.current?.("leave");
     await waitForInFlight();
     return isSaved();
-  }, [clearDebounceTimer, conflict, error]);
+  }, [clearDebounceTimer]);
 
   useEffect(() => {
     if (!enabled || !localDraft?.ownerKey || !vault.prepareLocalDraft) return undefined;

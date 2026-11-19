@@ -303,10 +303,14 @@ class MonitoringHandoffTest extends TestCase
     public function test_register_source_assigns_same_patient_then_accept_and_start_consult(): void
     {
         $patient = $this->rhuPatient(['barangay_health_center_id' => null]);
-        $this->finalizeManage($this->rhuClinician(), $patient);
+        $rhuClinician = $this->rhuClinician();
+        $this->finalizeManage($rhuClinician, $patient);
         $handoff = MonitoringHandoffRequest::query()->sole();
-        $bhcStaff = $this->bhcUser($this->bhc);
+        $bhcStaff = $this->bhcUser($this->bhc, [...StaffRoles::defaults('midwife'), 'families.manage']);
         $otherLocal = $this->bhcPatient($this->bhc, ['first_name' => 'Lookalike']);
+        $search = '/api/bhc/households/candidates?search='.urlencode($patient->last_name);
+
+        $this->as($bhcStaff)->getJson($search)->assertOk()->assertJsonCount(0, 'data');
 
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $otherLocal->id,
@@ -321,6 +325,19 @@ class MonitoringHandoffTest extends TestCase
 
         $this->assertSame($this->bhc->id, $patient->fresh()->barangay_health_center_id);
         $this->assertSame($this->rhu->id, $patient->fresh()->rural_health_unit_id);
+
+        $this->as($this->bhcUser($this->otherBhc))->getJson($search)->assertOk()->assertJsonCount(0, 'data');
+        $this->as($bhcStaff)->getJson($search)->assertOk()
+            ->assertJsonPath('data.0.id', $patient->id)
+            ->assertJsonPath('data.0.family_serial_number', null);
+        $newFamily = $this->postJson('/api/bhc/households', [
+            'head_patient_id' => $patient->id,
+            'serial_mode' => 'auto',
+            'address' => ['streetAddress' => 'First Street', 'purokArea' => null, 'barangay' => 'Local', 'municipality' => 'Bulakan'],
+        ])->assertCreated()->assertJsonPath('data.head_patient_id', $patient->id)->json('data');
+        $this->assertMatchesRegularExpression('/^FSN-\d{4}-\d{4}$/', $newFamily['serial_number']);
+        $this->assertSame($newFamily['serial_number'], $patient->fresh()->family_serial_number);
+        $this->as($rhuClinician)->getJson("/api/patients/{$patient->id}")->assertOk();
 
         // Retry is idempotent and does not create a second patient.
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/register-source")
@@ -395,7 +412,7 @@ class MonitoringHandoffTest extends TestCase
 
         $this->finalizeManage($this->rhuClinician(), $patient);
         $handoff = MonitoringHandoffRequest::query()->sole();
-        $bhcStaff = $this->bhcUser($this->bhc);
+        $bhcStaff = $this->bhcUser($this->bhc, [...StaffRoles::defaults('midwife'), 'families.manage']);
         $patientId = $patient->id;
 
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/register-source")
@@ -411,6 +428,24 @@ class MonitoringHandoffTest extends TestCase
         $this->assertNull($fresh->household_id);
         $this->assertSame(1, Patient::whereKey($patientId)->count());
         $this->assertNotNull($household->fresh()->archived_at);
+
+        $localHead = $this->bhcPatient($this->bhc, ['birthdate' => '1960-02-02']);
+        $localHousehold = $this->postJson('/api/bhc/households', [
+            'head_patient_id' => $localHead->id,
+            'serial_mode' => 'auto',
+            'address' => ['streetAddress' => 'First Street', 'purokArea' => null, 'barangay' => 'Local', 'municipality' => 'Bulakan'],
+        ])->assertCreated()->json('data');
+        $this->patchJson("/api/patients/{$patientId}", [
+            'household' => [
+                'kind' => 'existing',
+                'household_id' => $localHousehold['id'],
+                'version' => $localHousehold['version'],
+                'relationship' => 'Daughter',
+            ],
+        ])->assertOk()
+            ->assertJsonPath('data.household_id', $localHousehold['id'])
+            ->assertJsonPath('data.family_serial_number', $localHousehold['serial_number']);
+        $this->assertSame($this->rhu->id, $patient->fresh()->rural_health_unit_id);
     }
 
     public function test_register_source_blocks_rhu_household_head_with_remaining_members(): void
@@ -798,7 +833,6 @@ class MonitoringHandoffTest extends TestCase
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $destination->id,
             'identity_confirmed' => true,
-            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
         ])->assertOk()
             ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_PENDING_REVIEW)
             ->assertJsonPath('data.source_patient.id', $source->id)
@@ -816,7 +850,6 @@ class MonitoringHandoffTest extends TestCase
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $destination->id,
             'identity_confirmed' => true,
-            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
         ])->assertOk()
             ->assertJsonPath('data.linked_patient.id', $destination->id);
 

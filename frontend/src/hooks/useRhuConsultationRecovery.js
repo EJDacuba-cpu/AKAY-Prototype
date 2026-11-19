@@ -74,7 +74,7 @@ export default function useRhuConsultationRecovery({
     setBusy(false);
     setOperation("");
     gate.current = false;
-    if (handoff) {
+    if (handoff && attempt === 0) {
       if (handoff.draft) callbacks.current.onRestore?.(handoff.draft, false);
       setReady(true);
       setChecking(false);
@@ -93,8 +93,9 @@ export default function useRhuConsultationRecovery({
   }, [visit, uuid, patientId, owner, currentUserId, enabled, handoff, attempt]);
 
   async function run(kind, note) {
-    if (gate.current || checking || !decision) return;
-    if (kind !== "takeover" && ownership?.occupied) return;
+    const reloading = kind === "reload";
+    if (gate.current || checking || (!decision && !reloading)) return false;
+    if (!reloading && kind !== "takeover" && ownership?.occupied) return false;
     gate.current = true;
     const epoch = generation.current;
     setBusy(true);
@@ -102,7 +103,9 @@ export default function useRhuConsultationRecovery({
     setFailedOperation("");
     setError("");
     try {
-      const args = { visit, patientId, owner, decision, api, currentUserId };
+      const currentDecision = reloading ? await lookupRhuRecovery({ visit, patientId, owner, api }) : decision;
+      if (epoch !== generation.current) return false;
+      const args = { visit, patientId, owner, decision: currentDecision, api, currentUserId };
       if (kind === "discard") {
         await discardRhuRecovery(args);
         if (epoch !== generation.current) return;
@@ -124,30 +127,34 @@ export default function useRhuConsultationRecovery({
         setOwnership(null);
         setReady(true);
       }
+      return true;
     } catch (problem) {
       if (epoch !== generation.current) return;
       const lease = ownershipFromProblem(problem) || (isEditorLeaseConflict(problem)
         ? ownershipFromDraft(decision?.server, currentUserId)
         : null);
-      if (lease?.occupied) {
+      if (lease?.occupied && !reloading) {
         setOwnership({ ...lease, canTakeover: lease.canTakeover ?? decision?.server?.canEdit !== false });
         setFailedOperation("");
         setError("");
       } else {
-        setFailedOperation(kind === "takeover" ? "takeover" : kind);
+        setFailedOperation(problem?.code === "DRAFT_LOOKUP_CHANGED" ? "check" : kind);
         setError(friendlyMessage(problem, FRIENDLY.recover));
       }
+      return false;
     } finally {
-      // Always clear busy so a Retry/lookup that bumps generation cannot leave
-      // recovery actions permanently disabled on "Restoring...".
-      gate.current = false;
-      setBusy(false);
-      setOperation("");
+      // The latest lookup owns its pending state after a change of visit.
+      if (epoch === generation.current) {
+        gate.current = false;
+        setBusy(false);
+        setOperation("");
+      }
     }
   }
   return {
     ready, checking, decision, ownership, busy, operation, failedOperation, error,
     resume: () => run("resume"),
+    reload: () => run("reload"),
     discard: () => run("discard"),
     takeover: (note) => run("takeover", note),
     retry: () => { if (!gate.current) setAttempt((value) => value + 1); },

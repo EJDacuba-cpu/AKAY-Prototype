@@ -1,3 +1,4 @@
+import PreviousMethodSelect from "../../components/features/health-records/PreviousMethodSelect";
 import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
 import MedicineAllocationFields from "../../components/features/medicine/MedicineAllocationFields";
 import { allocationIntent, validateDispenseQuantity, validateDispenseItems } from "../../utils/medicineExpiryGroups";
@@ -20,7 +21,6 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import {
-  ConfirmationModal,
   ConnectionErrorState,
   ConnectionIssueModal,
   HealthRecordFormSkeleton,
@@ -63,13 +63,13 @@ import {
   PREVIOUS_FP_METHOD_OPTIONS,
   getApplicableFpMethods,
   getFpMethodRestriction,
+  getInitialVisitFpMethod,
   resolveHistoricalFpMethod,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi } from "../../utils/bmi";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   applyRiskFlags,
-  calculateAgeInYears,
   getMaternalRiskFlags,
   pendingRiskAnnouncements,
 } from "../../utils/maternalRisk";
@@ -79,7 +79,7 @@ import {
   buildPatientRecordDetailsState,
   locationToPath,
 } from "../../utils/profileNavigation";
-import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
+import { PROGRAM_CLASSIFICATIONS, consultationPatientAge, consultationProgramRestriction, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
   EMPTY_MATERNAL_DATA,
   MATERNAL_RISK_KEYS,
@@ -96,14 +96,12 @@ import {
   withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
-  MATERNAL_CARE_MALE_ELIGIBILITY,
   canCompleteMaternalFollowUpResolution,
   continuedCareBlocksProgress,
   getPrenatalEnrollment,
   isMaternalServiceLoadFailed,
   isMaternalServiceResolving,
   maternalProgramControl,
-  prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
   shouldPrefillPrenatalBaseline,
   shouldSeedMaternalFromPrenatalFollowUp,
@@ -151,7 +149,7 @@ import {
 } from "../../utils/backgroundUpdate";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
-import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay } from "../../utils/infantVisibility";
 import { defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import {
   informantPayload,
@@ -202,6 +200,7 @@ import { actionsTakenErrors, restoreActionsTakenText } from "../../utils/actions
 import {
   extraScheduleRows,
   followUpScheduleErrors,
+  getContinuedServicePrograms,
   followUpSchedulesPayload,
   managedReturnRows,
   entryPurposeKey,
@@ -372,6 +371,7 @@ const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
   "Immunization",
   "Maternal",
   "Family Planning",
+  "Nutrition",
   "TB DOTS / TB Monitoring",
 ]);
 
@@ -481,7 +481,6 @@ const EMPTY_IMMUNIZATION_DATA = {
   maternalTtTdEvidence: [],
 };
 
-const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
   "CPAB",
@@ -578,17 +577,6 @@ function normalizePatientStatus(status) {
   return value || "Routine Monitoring";
 }
 
-function getPatientAgeInYears(patient, referenceDate) {
-  if (!patient) return null;
-  const birthdate = getEffectivePatientBirthdate(patient);
-  const ageFromBirthdate = calculateAgeInYears(birthdate, referenceDate);
-  if (ageFromBirthdate !== null) return ageFromBirthdate;
-
-  const ageText = String(patient.age || patient.ageSex || "").trim();
-  const ageMatch = ageText.match(/\d+(?:\.\d+)?/);
-  return ageMatch ? Number(ageMatch[0]) : null;
-}
-
 function getEffectivePatientBirthdate(...sources) {
   for (const source of sources) {
     if (!source || typeof source !== "object") continue;
@@ -616,54 +604,6 @@ function getEffectivePatientBirthdate(...sources) {
   }
 
   return "";
-}
-
-function getImmunizationPatientMode(patient, referenceDate, ...fallbackSources) {
-  const birthdate = getEffectivePatientBirthdate(patient, ...fallbackSources);
-  const agePatient = birthdate ? { ...(patient || {}), birthdate } : patient;
-  const age = getPatientAgeInYears(agePatient, referenceDate);
-  if (age === null) return { age: null, mode: "unknown" };
-  return {
-    age,
-    mode: age >= ADULT_IMMUNIZATION_MIN_AGE_YEARS ? "adult" : "child",
-  };
-}
-
-function getAdultImmunizationMessage(age) {
-  const ageText = Number.isFinite(age) ? `${age}` : "18 or more";
-  return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
-}
-
-function getMaternalEligibility(patient) {
-  if (patient && isPatientMale(patient)) {
-    return {
-      eligible: false,
-      message: MATERNAL_CARE_MALE_ELIGIBILITY,
-    };
-  }
-
-  return { eligible: true, message: "" };
-}
-
-/**
- * Whether Family Planning may be selected for this patient at all.
- *
- * Sex is deliberately NOT considered here. Condom and NSV are male methods, so
- * blocking the whole classification for a male patient made them unreachable.
- * The sex rule lives on the method instead - see getFpMethodRestriction.
- */
-function getFamilyPlanningEligibility(patient, referenceDate) {
-  if (!patient) return { eligible: true };
-
-  const age = getPatientAgeInYears(patient, referenceDate);
-  if (age !== null && age < 10) {
-    return {
-      eligible: false,
-      message: `Family Planning records are intended for adolescent or adult reproductive health clients. This patient is recorded as ${age} years old. Please choose another classification.`,
-    };
-  }
-
-  return { eligible: true };
 }
 
 function getVaccineEntries(data) {
@@ -726,7 +666,6 @@ export default function ConsultationWorkspace() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
-  const [prenatalEnrollmentModal, setPrenatalEnrollmentModal] = useState(null);
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
   const officialSubmissionRef = useRef(null);
@@ -736,12 +675,12 @@ export default function ConsultationWorkspace() {
   // The wizard is a single ordered phase rather than a set of booleans so that
   // "which screen am I on" has exactly one answer. Every entry opens on the form.
   const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
-  const [consultationMode, setConsultationMode] = useState(() => {
+  const [savedConsultationMode, setConsultationMode] = useState(() => {
     if (!opensNewConsultation) return null;
     return (routeContinuedIds.selectedPrograms || []).length ? "program" : "general";
   });
-  const [selectedPrograms, setSelectedPrograms] = useState(() => routeContinuedIds.selectedPrograms || []);
-  const [primaryProgram, setPrimaryProgram] = useState(() => (routeContinuedIds.selectedPrograms || [])[0] || "");
+  const [savedPrograms, setSelectedPrograms] = useState(() => routeContinuedIds.selectedPrograms || []);
+  const [savedPrimaryProgram, setPrimaryProgram] = useState(() => (routeContinuedIds.selectedPrograms || [])[0] || "");
   // Draft resume keeps the saved enroll/continue until care-overview or records settle.
   const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical
@@ -751,7 +690,6 @@ export default function ConsultationWorkspace() {
   );
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
-  const classificationRef = useRef(null);
   const maternalFollowUpSeededRef = useRef(
     !(routeContext.kind === "continue" && routeContinuedIds.followUpIds.length > 0),
   );
@@ -1139,7 +1077,19 @@ export default function ConsultationWorkspace() {
   // The 409 conflicts from the last save, until the clinician applies a choice per section.
   const [backgroundConflicts, setBackgroundConflicts] = useState(null);
 
-  const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
+  const continuedPrograms = useMemo(
+    () => getContinuedServicePrograms(continuedFollowUps, selectedPatient, dateOfVisit),
+    [continuedFollowUps, selectedPatient, dateOfVisit],
+  );
+  const selectedPrograms = useMemo(
+    () => continuedPrograms.length ? [...new Set([...savedPrograms, ...continuedPrograms])] : savedPrograms,
+    [continuedPrograms, savedPrograms],
+  );
+  const primaryProgram = savedPrimaryProgram || continuedPrograms[0] || "";
+  const consultationMode = continuedPrograms.length ? "program" : savedConsultationMode;
+  const normalizedHealthRecordType = normalizeRecordType(
+    continuedPrograms.length ? PROGRAM_CLASSIFICATIONS[primaryProgram] : healthRecordType,
+  );
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
@@ -1159,6 +1109,11 @@ export default function ConsultationWorkspace() {
     staleTime: 30_000,
   });
   const patientRecordsForHeight = bodyHistoryQuery.data;
+  const initialVisitFpMethod = getInitialVisitFpMethod(
+    patientRecordsForHeight,
+    continuedVisitLink(continuedFollowUpTaskIds, continuedFollowUps)?.parentHealthRecordId,
+  );
+  const previousMethod = familyPlanningData.previousMethod || initialVisitFpMethod;
   const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecordsForHeight, "ongoing").findings, [patientRecordsForHeight]);
   function changeBodyReassessments(next) {
     setBodyFindingReassessments(next);
@@ -1444,10 +1399,6 @@ export default function ConsultationWorkspace() {
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
   const showFollowUpMonitoringFields =
     normalizedPatientStatus === "Follow-up Required" && !needsReferral;
-  const immunizationPatientInfo = getImmunizationPatientMode(
-    selectedPatient,
-    dateOfVisit,
-  );
   // Sex restricts the METHOD, not the classification: a male client can be
   // recorded under Condom or NSV, but not under a female-only method.
   const applicableFamilyPlanningMethods = getApplicableFpMethods(
@@ -1458,10 +1409,6 @@ export default function ConsultationWorkspace() {
     method: familyPlanningData.methodUsed,
     isMale: selectedPatientIsMale,
   });
-  const familyPlanningEligibility = getFamilyPlanningEligibility(
-    selectedPatient,
-    dateOfVisit,
-  );
   const immunizationVaccineEntries = getVaccineEntries(immunizationData);
   const epiHistoryByCode = useMemo(
     () =>
@@ -1673,7 +1620,7 @@ export default function ConsultationWorkspace() {
           ]))
           : [],
       },
-      familyPlanningData: pickDraftFields(familyPlanningData, [
+      familyPlanningData: pickDraftFields({ ...familyPlanningData, previousMethod }, [
         "clientType",
         "methodUsed",
         "previousMethod",
@@ -3264,6 +3211,18 @@ export default function ConsultationWorkspace() {
       goToStepKey(REVIEW_STEP);
       return;
     }
+    const restrictedService = selectedPrograms
+      .map((key) => consultationProgramRestriction(key, selectedPatient, dateOfVisit))
+      .find(Boolean);
+    if (restrictedService) {
+      setNoticeModal({
+        title: "Health service unavailable",
+        message: restrictedService,
+        onClose: () => goToStepKey(INTERVIEW_STEP),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
     if (!canFinalize) {
       if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
       const historyErrors = canViewBackground ? stagedHistoryErrors(historyUpdateForSave) : {};
@@ -3312,46 +3271,6 @@ export default function ConsultationWorkspace() {
     if (revealErrorStep(clientErrors)) return;
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
-    if (
-      effectiveHealthRecordType === "Maternal" &&
-      selectedPatientIsMale
-    ) {
-      setNoticeModal({
-        title: "Invalid Classification",
-        message:
-          "Maternal records cannot be created for a patient recorded as male. Please choose another classification.",
-      });
-      return;
-    }
-
-    if (
-      effectiveHealthRecordType === "Immunization" &&
-      immunizationPatientInfo.mode === "adult"
-    ) {
-      setHealthRecordType("");
-      setNoticeModal({
-        title: "Invalid Classification",
-        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
-        onClose: () => classificationRef.current?.focus(),
-        buttonLabel: "Okay",
-      });
-      return;
-    }
-
-    if (
-      effectiveHealthRecordType === "Family Planning" &&
-      !familyPlanningEligibility.eligible
-    ) {
-      setHealthRecordType("");
-      setNoticeModal({
-        title: "Invalid Classification",
-        message: familyPlanningEligibility.message,
-        onClose: () => classificationRef.current?.focus(),
-        buttonLabel: "Okay",
-      });
-      return;
-    }
-
     const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
       ...entry,
       vaccineName:
@@ -3362,7 +3281,7 @@ export default function ConsultationWorkspace() {
     }));
     const preparedImmunizationData = {
       ...immunizationData,
-      patientAgeYears: immunizationPatientInfo.age,
+      patientAgeYears: consultationPatientAge(selectedPatient, dateOfVisit),
       immunizationFormType: "child",
       vaccineEntries: preparedVaccineEntries,
       vaccinesGiven: preparedVaccineEntries,
@@ -3488,8 +3407,8 @@ export default function ConsultationWorkspace() {
       ...familyPlanningData,
       client_type: familyPlanningData.clientType || "",
       method_used: familyPlanningData.methodUsed || "",
-      previousMethod: historicalFpMethod.label || familyPlanningData.previousMethod || "",
-      previous_method: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+      previousMethod,
+      previous_method: previousMethod,
       fp_visit_type: familyPlanningData.fpVisitType || "",
       visitType: familyPlanningData.fpVisitType || "",
       visit_type: familyPlanningData.fpVisitType || "",
@@ -4103,12 +4022,10 @@ export default function ConsultationWorkspace() {
 
   // ---- Wizard view models -------------------------------------------------
   // Services stay disabled until the patient they are restricted by has loaded.
-  const wizardPrograms = lockProgramsWhilePatientLoads(visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), selectedPatient, dateOfVisit).map((key) => {
+  const wizardPrograms = lockProgramsWhilePatientLoads(Object.keys(PROGRAM_CLASSIFICATIONS).map((key) => {
     const classification = PROGRAM_CLASSIFICATIONS[key];
-    const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
-      : key === "Family Planning" ? familyPlanningEligibility
-      : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
-      : { eligible: true, message: "" };
+    const restriction = consultationProgramRestriction(key, selectedPatient, dateOfVisit);
+    const continuedService = continuedPrograms.includes(key);
     const maternalIncluded = selectedPrograms.includes("Maternal");
     const maternalCopy = key === "Maternal"
       ? prenatalProgramCopy({
@@ -4119,7 +4036,7 @@ export default function ConsultationWorkspace() {
           hideAction: maternalReadonlyActive,
         })
       : null;
-    const maternalControl = key === "Maternal"
+    const maternalControl = key === "Maternal" && !restriction
       ? maternalProgramControl({
           resolving: maternalResolving,
           loadFailed: maternalLoadFailed,
@@ -4135,7 +4052,7 @@ export default function ConsultationWorkspace() {
       : null;
     return {
       key,
-      title: key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
+      title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
       description: key === "Maternal"
         ? maternalCopy.description
         : nutritionCopy?.description
@@ -4143,17 +4060,18 @@ export default function ConsultationWorkspace() {
             ? "Immunization and child vaccination services."
             : RECORD_TYPE_DETAILS[classification]?.description),
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
-      disabled: !eligibility.eligible || Boolean(maternalControl?.disabled),
-      disabledReason: !eligibility.eligible ? eligibility.message : (maternalControl?.disabledReason || eligibility.message),
-      disabledNote: eligibility.eligible ? maternalControl?.disabledNote : undefined,
+      restriction,
+      disabled: Boolean(maternalControl?.disabled),
+      disabledReason: maternalControl?.disabledReason,
+      disabledNote: maternalControl?.disabledNote,
       busy: Boolean(maternalControl?.busy),
       actionLabel: maternalControl?.actionLabel,
-      hideAction: Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
+      hideAction: continuedService || (!restriction && Boolean(maternalCopy?.hideAction || maternalControl?.hideAction)),
       enrollLabel: maternalCopy?.enrollLabel || nutritionCopy?.enrollLabel,
-      statusLabel: maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
-      statusTone: maternalCopy?.statusTone || nutritionCopy?.statusTone,
+      statusLabel: continuedService ? "Active" : maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
+      statusTone: continuedService ? "active" : maternalCopy?.statusTone || nutritionCopy?.statusTone,
     };
-  }), selectedPatientLoading);
+  }), selectedPatientLoading, continuedCareLoading);
 
   function closeDraftDecision() {
     if (draftDecisionBusy) return;
@@ -4240,28 +4158,22 @@ export default function ConsultationWorkspace() {
   }
 
   function handleProgramSelect(option) {
+    const program = wizardPrograms.find((item) => item.key === option);
+    if (!program || program.disabled || program.hideAction) return;
+    if (program.restriction) {
+      if (selectedPrograms.includes(option)) applyProgramSelect(option);
+      return;
+    }
     if (option === "Maternal" && maternalLoadFailed) {
       retryMaternalServiceResolution();
       return;
     }
-    const program = wizardPrograms.find((item) => item.key === option);
-    if (program?.hideAction) return;
-    if (program?.disabled) return;
     if (option === "Maternal" && prenatalEnrollment.enrolled) return;
-    if (option === "Maternal" && !selectedPrograms.includes("Maternal")) {
-      setPrenatalEnrollmentModal("enroll");
-      return;
-    }
     applyProgramSelect(option);
   }
 
-  function confirmPrenatalEnrollment() {
-    setPrenatalEnrollmentModal(null);
-    applyProgramSelect("Maternal");
-  }
-
-  // A continued prenatal follow-up includes existing Maternal Care once, without
-  // the confirmation modal. Draft resume keeps whatever the draft saved. The
+  // A continued prenatal follow-up adds existing Maternal Care once.
+  // Draft resume keeps whatever the draft saved. The
   // resolved flag is set even when nothing is seeded so a late response cannot
   // re-add Maternal Care after staff removed it.
   useEffect(() => {
@@ -4275,7 +4187,7 @@ export default function ConsultationWorkspace() {
     if (
       !skipSeed
       && routeContext.kind === "continue"
-      && getMaternalEligibility(selectedPatient).eligible
+      && !consultationProgramRestriction("Maternal", selectedPatient, dateOfVisit)
       && shouldSeedMaternalFromPrenatalFollowUp({
         followUps: continuedFollowUps,
         alreadyIncluded: selectedPrograms.includes("Maternal"),
@@ -4287,7 +4199,7 @@ export default function ConsultationWorkspace() {
     setMaternalFollowUpResolved(true);
     // Resolved once when continued follow-ups and enrollment have settled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
+  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, dateOfVisit, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
 
   // The step flow's Next phase: Assessment & Care Plan, then Review & Finalize.
   const isGeneralOnly =
@@ -4662,7 +4574,7 @@ export default function ConsultationWorkspace() {
       rows: programReviewRows({
         Maternal: maternalReviewFields({ ...maternalData, riskAssessment: applyRiskFlags(maternalData.riskAssessment, riskFlags) }),
         Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
-        "Family Planning": familyPlanningData,
+        "Family Planning": { ...familyPlanningData, previousMethod },
         "TB DOTS / TB Monitoring": tbData,
       }[step.classification]),
     })),
@@ -5167,13 +5079,12 @@ export default function ConsultationWorkspace() {
                   }
                 />
 
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">Previous Method</p>
-                  <p className="text-sm text-[#111827]">{historicalFpMethod.label || "Not recorded"}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    From Patient History. This visit records Method Used / Accepted.
-                  </p>
-                </div>
+                <PreviousMethodSelect
+                  patient={selectedPatient}
+                  value={previousMethod}
+                  hasLinkedDefault={Boolean(initialVisitFpMethod)}
+                  onChange={(value) => handleFamilyPlanningChange("previousMethod", value)}
+                />
 
                 <FieldSelect
                   label="Method Used / Accepted"
@@ -5487,16 +5398,6 @@ export default function ConsultationWorkspace() {
             : []
         }
         onClose={() => setNoticeModal(null)}
-      />
-      <ConfirmationModal
-        open={Boolean(prenatalEnrollmentModal)}
-        title={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).title}
-        description={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).description}
-        confirmText={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).confirmText}
-        cancelText="Cancel"
-        tone="plain"
-        onConfirm={confirmPrenatalEnrollment}
-        onCancel={() => setPrenatalEnrollmentModal(null)}
       />
       {/* Prenatal age / height risk: states the fact only, no advice. */}
       <NoticeModal

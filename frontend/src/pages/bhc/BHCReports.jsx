@@ -33,6 +33,7 @@ import { queryKeys } from "../../utils/queryKeys";
 import { getAllHealthRecords } from "../../services/healthRecordService";
 import { getAllPatients } from "../../services/patientService";
 import { getAllReferrals } from "../../services/referrals";
+import "./bhc-morbidity-print.css";
 
 export default function BHCReports() {
   const user = getCurrentUser();
@@ -128,7 +129,9 @@ export default function BHCReports() {
   );
 
   const handlePrint = usePrintDocument("#bhc-report-print", {
-    title: `AKAY BHC Reports - ${report.categoryLabel} - ${period.label}`,
+    title: category === "morbidity"
+      ? `Morbidity Report - ${period.label}`
+      : `AKAY BHC Reports - ${report.categoryLabel} - ${period.label}`,
     loading: loading || refreshing,
     error: loadError,
     onRetry: retryReports,
@@ -250,24 +253,18 @@ export default function BHCReports() {
               ) : (
                 <div className="overflow-hidden rounded-xl border border-neutral-200">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table aria-label="Reporting summary" className="w-full text-left text-sm">
                       <thead>
-                        <tr className="h-11 border-b border-neutral-200 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-                          <th className="px-3">Indicator</th>
-                          <th className="px-3 text-right">Count</th>
-                          {category === "epi" || category === "maternal" ? null : (
-                            <th className="px-3">Notes</th>
-                          )}
+                        <tr className="border-b border-neutral-200 bg-neutral-100 text-xs font-semibold text-neutral-600">
+                          <th scope="col" className="px-4 py-3">Indicator</th>
+                          <th scope="col" className="w-24 px-4 py-3 text-right">Count</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-100">
                         {report.summary.map((row, index) => (
-                          <tr key={`${row.label}-${row.note || ""}-${index}`} className="h-14 hover:bg-neutral-50">
-                            <td className="px-3 text-sm font-semibold text-ink-800">{row.label}</td>
-                            <td className="px-3 text-right tabular-nums text-ink-800">{row.value}</td>
-                            {category === "epi" || category === "maternal" ? null : (
-                              <td className="truncate px-3 text-[11px] text-neutral-600" title={row.note || undefined}>{row.note}</td>
-                            )}
+                          <tr key={`${row.label}-${index}`} className="hover:bg-neutral-50">
+                            <th scope="row" className="px-4 py-3 text-left font-medium text-ink-800">{row.label}</th>
+                            <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink-800">{row.value}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -316,6 +313,7 @@ export default function BHCReports() {
           ) : null}
 
           <PrintReport
+            isMorbidity={category === "morbidity"}
             printState={loading || refreshing ? "loading" : loadError ? "error" : "ready"}
             printKey={JSON.stringify([category, period, ageGroup, patientsUpdatedAt, recordsUpdatedAt, referralsUpdatedAt])}
             facilityName={facilityName}
@@ -325,7 +323,6 @@ export default function BHCReports() {
             summary={report.summary}
             notes={report.notes}
             ageGroup={isNutrition ? ageGroup : ""}
-            hideNotes={category === "epi" || category === "maternal"}
           />
         </div>
       </PageStateWrapper>
@@ -334,6 +331,7 @@ export default function BHCReports() {
 }
 
 export function PrintReport({
+  isMorbidity = false,
   printState = "ready",
   printKey = "",
   facilityName,
@@ -343,8 +341,43 @@ export function PrintReport({
   summary,
   notes = [],
   ageGroup = "",
-  hideNotes = false,
 }) {
+  if (isMorbidity) {
+    // The morbidity summary starts with the report total, followed by one row per disease.
+    const [total, ...diseases] = summary;
+    const totalReported = total?.value ?? 0;
+    return (
+      <section id="bhc-report-print" className="print-only bhc-morbidity-print" data-print-state={printState} data-print-key={printKey}>
+        <header>
+          <h1>MORBIDITY REPORT</h1>
+          <p>{facilityName}</p>
+          <p>{periodLabel}</p>
+        </header>
+        <p className="morbidity-total-reported">Total Reported <strong>{totalReported}</strong></p>
+        <table aria-label="Reported diseases">
+          <colgroup><col className="morbidity-number" /><col /><col className="morbidity-count" /></colgroup>
+          <thead>
+            <tr><th scope="col">No.</th><th scope="col">Disease</th><th scope="col" className="num">Count</th></tr>
+          </thead>
+          <tbody>
+            {diseases.map((row, index) => (
+              <tr key={row.label}>
+                <td>{index + 1}</td>
+                <th scope="row">{row.label}</th>
+                <td className="num">{row.value}</td>
+              </tr>
+            ))}
+            <tr className="morbidity-total-row">
+              <td />
+              <th scope="row">Total</th>
+              <td className="num">{totalReported}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    );
+  }
+
   return (
     <section id="bhc-report-print" data-print-state={printState} data-print-key={printKey} className="print-only">
       <h1 className="text-base font-bold text-neutral-900">AKAY BHC Reports</h1>
@@ -363,24 +396,22 @@ export function PrintReport({
           ))}
         </ul>
       ) : null}
-      <table className="akay-summary-print-table mt-4 w-full text-left text-[12px]">
+      <table aria-label="Reporting summary" className="mt-4 w-full text-left text-[12px]">
+        <colgroup>
+          <col />
+          <col style={{ width: "20%" }} />
+        </colgroup>
         <thead>
           <tr>
-            <th className="border-b border-neutral-300 py-1.5">Indicator</th>
-            <th className="border-b border-neutral-300 py-1.5 text-right">Count</th>
-            {hideNotes ? null : (
-              <th className="border-b border-neutral-300 py-1.5">Notes</th>
-            )}
+            <th scope="col" className="border-b border-neutral-300 py-1.5">Indicator</th>
+            <th scope="col" className="num border-b border-neutral-300 py-1.5 text-right">Count</th>
           </tr>
         </thead>
         <tbody>
           {(summary.length ? summary : cards).map((row, index) => (
-            <tr key={`${row.label}-${row.note || row.hint}-${index}`}>
-              <td className="border-b border-neutral-200 py-1.5">{row.label}</td>
-              <td className="border-b border-neutral-200 py-1.5 text-right tabular-nums">{row.value}</td>
-              {hideNotes ? null : (
-                <td className="border-b border-neutral-200 py-1.5">{row.note || row.hint}</td>
-              )}
+            <tr key={`${row.label}-${index}`}>
+              <th scope="row" className="border-b border-neutral-200 py-1.5 text-left font-normal">{row.label}</th>
+              <td className="num border-b border-neutral-200 py-1.5 text-right tabular-nums">{row.value}</td>
             </tr>
           ))}
         </tbody>

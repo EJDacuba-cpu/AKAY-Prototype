@@ -1,5 +1,7 @@
 /** Unified BHC Monitoring Requests inbox (handoffs + TB endorsements). */
 
+import { formatPatientName } from "./formatters.js";
+
 export const KIND_MONITORING_HANDOFF = "monitoring_handoff";
 export const KIND_TB_ENDORSEMENT = "tb_endorsement";
 
@@ -93,6 +95,16 @@ export function mergeMonitoringInbox({
     if (byTime !== 0) return byTime;
     return Number(right.id) - Number(left.id);
   });
+}
+
+export function filterMonitoringInbox(rows, { search = "", type = "", status = "" } = {}) {
+  const query = search.trim().toLowerCase();
+  return rows.filter((row) =>
+    (!type || row.typeLabel === type) &&
+    (!status || row.statusLabel === status) &&
+    (!query || [formatPatientName(row.patient, ""), row.conditionLabel, row.sendingRhu]
+      .some((value) => value?.toLowerCase().includes(query))),
+  );
 }
 
 /**

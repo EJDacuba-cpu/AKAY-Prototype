@@ -208,6 +208,7 @@ export default function BhcHealthRecordWorkspace({
   laboratoryEntries = [],
   onBack,
   onPrint,
+  printActions,
 }) {
   if (!record) return null;
 
@@ -275,6 +276,7 @@ export default function BhcHealthRecordWorkspace({
         isUpdating={isUpdating}
         onBack={onBack}
         onPrint={onPrint}
+        printActions={printActions}
       />
 
       {purpose && <PurposeSection purpose={purpose} />}
@@ -441,6 +443,7 @@ function VisitHeader({
   isUpdating,
   onBack,
   onPrint,
+  printActions,
 }) {
   return (
     <section className="rounded-card border border-neutral-200/80 bg-white p-5 shadow-card">
@@ -469,10 +472,13 @@ function VisitHeader({
           )}
         </div>
 
-        <Button type="button" variant="secondary" size="sm" onClick={onPrint} className="h-9">
-          <Printer size={14} />
-          Print
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onPrint} className="h-9">
+            <Printer size={14} />
+            Print
+          </Button>
+          {printActions}
+        </div>
       </div>
 
       <dl className="mt-5 grid gap-x-6 gap-y-4 border-t border-neutral-200 pt-4 sm:grid-cols-2 lg:grid-cols-3">

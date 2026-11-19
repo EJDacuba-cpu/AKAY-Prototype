@@ -61,6 +61,7 @@ class HealthRecordDraftPayloadService
         ]],
         'summaryOfPresentIllness' => self::SCALAR,
         'diagnosis' => self::SCALAR,
+        'diagnosisDraft' => self::SCALAR,
         'diagnoses' => ['*' => [
             'id' => self::SCALAR,
             'name' => self::SCALAR,
@@ -616,6 +617,7 @@ class HealthRecordDraftPayloadService
      */
     public function sanitizeStored(array $payload): array
     {
+        $payload = $this->restoreCarePlanAliases($payload);
         try {
             return $this->sanitize($payload);
         } catch (ValidationException $exception) {
@@ -630,6 +632,62 @@ class HealthRecordDraftPayloadService
 
             return $this->sanitize($payload);
         }
+    }
+
+    private function restoreCarePlanAliases(array $payload): array
+    {
+        $this->restoreAlias($payload, 'care_plan', 'carePlan');
+        if (! is_array($payload['carePlan'] ?? null)) {
+            return $payload;
+        }
+
+        $carePlan = &$payload['carePlan'];
+        $this->restoreAlias($carePlan, 'continued_follow_up_task_ids', 'continuedFollowUpTaskIds');
+        $this->restoreAlias($carePlan, 'service_handoffs', 'serviceHandoffs');
+        $this->restoreAlias($carePlan, 'service_supporting_labs', 'serviceSupportingLabs');
+        foreach (['rhu_follow_up' => 'rhuFollowUp', 'manage_to_bhc' => 'manageToBhc'] as $legacy => $canonical) {
+            if (array_key_exists($legacy, $carePlan)
+                && (! isset($payload[$canonical]) || $payload[$canonical] === $carePlan[$legacy])) {
+                $payload[$canonical] = $carePlan[$legacy];
+                unset($carePlan[$legacy]);
+            }
+        }
+        foreach ([
+            'serviceHandoffs' => [
+                'receiving_bhc_id' => 'receivingBhcId',
+                'monitoring_recommendation' => 'monitoringRecommendation',
+                'laboratory_evidence' => 'laboratoryEvidence',
+                'laboratory_evidence_confirmed' => 'laboratoryEvidenceConfirmed',
+            ],
+            'serviceSupportingLabs' => ['supporting_laboratory_tests' => 'supportingLaboratoryTests'],
+        ] as $list => $aliases) {
+            if (! is_array($carePlan[$list] ?? null)) {
+                continue;
+            }
+            foreach ($carePlan[$list] as &$row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                foreach ($aliases as $legacy => $canonical) {
+                    $this->restoreAlias($row, $legacy, $canonical);
+                }
+            }
+            unset($row);
+        }
+
+        return $payload;
+    }
+
+    private function restoreAlias(array &$payload, string $legacy, string $canonical): void
+    {
+        if (! array_key_exists($legacy, $payload)) {
+            return;
+        }
+        if (isset($payload[$canonical]) && $payload[$canonical] !== $payload[$legacy]) {
+            return; // Keep both so validation rejects conflicting values without discarding either.
+        }
+        $payload[$canonical] = $payload[$legacy];
+        unset($payload[$legacy]);
     }
 
     public function sanitize(array $payload): array
@@ -807,6 +865,7 @@ class HealthRecordDraftPayloadService
             'payload.bodyFindings.*.finding' => ['required', 'string', 'max:150'],
             'payload.bodyFindings.*.note' => ['nullable', 'string', 'max:500'],
             'payload.diagnoses' => ['nullable', 'array', 'max:20'],
+            'payload.diagnosisDraft' => ['nullable', 'string', 'max:150'],
             'payload.diagnoses.*.id' => ['nullable', 'string', 'max:64'],
             'payload.diagnoses.*.name' => ['required', 'string', 'max:150'],
             'payload.diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],

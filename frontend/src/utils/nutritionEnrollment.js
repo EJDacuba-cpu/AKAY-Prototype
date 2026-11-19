@@ -184,13 +184,11 @@ export function nutritionProgramCopy({ enrolled, included, status } = {}) {
   return {
     title: "Nutrition Care",
     enrollLabel: open ? "Continue Nutrition Care" : "Enroll to Nutrition",
-    statusLabel: open
-      ? (included ? "Continuing this visit" : "Active")
-      : (included ? "Included this visit" : "Not included"),
-    statusTone: open ? "active" : included ? "included" : "neutral",
+    statusLabel: open || included ? "Active" : "Not enrolled",
+    statusTone: open || included ? "active" : "neutral",
     description: open
       ? "Active Nutrition Care from a finalized consultation. Continue this visit without starting a second enrollment."
-      : "Optional. Nutrition Care becomes Active only after this consultation is finalized.",
+      : "New Nutrition Care enrollment takes effect when this consultation is finalized.",
     hideAction: false,
   };
 }

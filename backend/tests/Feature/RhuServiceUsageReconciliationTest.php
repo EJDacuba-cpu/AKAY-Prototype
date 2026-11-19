@@ -75,6 +75,57 @@ class RhuServiceUsageReconciliationTest extends TestCase
         $this->assertStringContainsString('PENTA', $usage->item_description);
     }
 
+    public function test_manual_usage_note_round_trips_through_draft_finalize_and_record_details(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+        $usage = [
+            'id' => 'usage-1',
+            'serviceProgram' => 'Nutrition',
+            'itemDescription' => 'Nutrition supplement',
+            'quantity' => 1,
+            'unit' => 'sachet',
+            'note' => 'Administered during visit',
+        ];
+        $payload = [
+            'selectedPrograms' => ['Nutrition'],
+            'primaryProgram' => 'Nutrition',
+            'nutritionIntent' => 'enroll',
+            'serviceUsages' => [$usage],
+        ];
+        $draft = $this->as($clinician)->postJson('/api/health-record-drafts', [
+            'patient_id' => $patient->id,
+            'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid,
+            'classification' => 'Nutrition',
+            'payload' => $payload,
+        ])->assertCreated();
+        $draftId = $draft->json('data.id');
+        $this->getJson('/api/health-record-drafts/'.$draftId)->assertOk()
+            ->assertJsonPath('data.payload.serviceUsages.0.note', $usage['note']);
+
+        $this->withHeaders([
+            'X-Health-Record-Draft-ID' => $draftId,
+            'X-Draft-Version' => (string) $draft->json('data.version'),
+        ]);
+        $recordId = $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'category' => 'Nutrition',
+            'selected_programs' => ['Nutrition'],
+            'primary_program' => 'Nutrition',
+            'monitoring_data' => $payload,
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson('/api/health-records/'.$recordId)->assertOk()
+            ->assertJsonPath('data.monitoring_data.serviceUsages.0.note', $usage['note']);
+        $this->assertDatabaseHas('rhu_service_usage_reconciliations', [
+            'health_record_id' => $recordId,
+            'note' => $usage['note'],
+            'reconciliation_status' => 'pending',
+        ]);
+    }
+
     public function test_to_dispense_lists_service_usage_and_confirm_deducts_once(): void
     {
         $patient = $this->patient();

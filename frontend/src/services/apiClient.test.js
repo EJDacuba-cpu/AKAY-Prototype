@@ -88,6 +88,18 @@ async function harness(t, respond, { timeoutMs = 10000 } = {}) {
   return { api, calls, clears, broadcasts, redirects, queryClient, get vaultPurges() { return vaultPurges; } };
 }
 
+test("a stalled draft response body is covered by the request timeout", async (t) => {
+  const h = await harness(t, ({ signal }) => ({
+    ok: true,
+    status: 200,
+    json: () => new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  }), { timeoutMs: 30 });
+  await assert.rejects(h.api.apiRequest("/health-record-drafts/lookup"), { code: "TIMEOUT" });
+  assert.equal(h.calls.length, 1);
+});
+
 function preserved(h, token = "original-test-token") {
   assert.equal(h.api.getAuthToken(), token);
   assert.equal(h.api.getStoredAuthUser().id, "7");

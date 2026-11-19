@@ -76,6 +76,24 @@ class HealthRecordDraftTest extends TestCase
         $this->medicineB = $this->medicine('Draft Medicine B', 5, $this->bhcB->id, $this->bhwB->id);
     }
 
+    public function test_family_planning_previous_method_survives_draft_recovery(): void
+    {
+        $methods = ['previousMethod' => 'CON — Condom', 'methodUsed' => 'NSV'];
+        $request = [
+            'patient_id' => $this->patientA->id,
+            'classification' => 'Family Planning',
+            'payload' => ['familyPlanningData' => $methods],
+        ];
+        $id = $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $request)
+            ->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.familyPlanningData.previousMethod', $methods['previousMethod'])
+            ->assertJsonPath('data.payload.familyPlanningData.methodUsed', $methods['methodUsed']);
+    }
+
     public function test_owner_can_create_list_resume_update_and_discard_encrypted_draft(): void
     {
         $payload = $this->draftPayload('Private clinical draft diagnosis.');
@@ -555,6 +573,34 @@ class HealthRecordDraftTest extends TestCase
             ->getJson("/api/health-record-drafts/{$publicId}")
             ->assertOk()
             ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.allergen', 'Dust');
+    }
+
+    public function test_unsupported_saved_field_keeps_original_draft_intact(): void
+    {
+        $id = $this->storedDraft([...$this->draftPayload(), 'oldClinicalField' => 'Fixture']);
+        $query = HealthRecordDraft::where('public_id', $id);
+        $original = $query->value('encrypted_payload');
+
+        $this->getJson("/api/health-record-drafts/{$id}")->assertConflict()
+            ->assertJsonPath('code', 'DRAFT_STORED_PAYLOAD_UNSUPPORTED');
+        $this->putJson("/api/health-record-drafts/{$id}", [...$this->draftRequest($this->draftPayload()), 'version' => 1])
+            ->assertConflict()->assertJsonPath('code', 'DRAFT_STORED_PAYLOAD_UNSUPPORTED');
+
+        $this->assertSame($original, $query->value('encrypted_payload'));
+        $this->assertSame(1, $query->value('version'));
+    }
+
+    public function test_draft_lookup_connection_failure_returns_retryable_response(): void
+    {
+        $failure = new \PDOException('Synthetic connection failure');
+        $failure->errorInfo = ['08006'];
+        $this->mock(HealthRecordDraftService::class, fn ($mock) => $mock
+            ->shouldReceive('lookupFor')->once()->andThrow($failure));
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/lookup?patient_id={$this->patientA->id}")
+            ->assertServiceUnavailable()
+            ->assertJsonPath('code', 'DRAFT_DATABASE_UNAVAILABLE');
     }
 
     public function test_full_pre_itr_draft_opens_with_its_background_update_dropped(): void

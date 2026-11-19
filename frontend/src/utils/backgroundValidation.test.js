@@ -6,8 +6,10 @@ import {
   historyFieldError,
 } from "./backgroundValidation.js";
 import {
+  BACKGROUND_SECTION_FIELDS,
   buildBackgroundUpdate,
   normalizeBackground,
+  overlayBackgroundUpdate,
   restoreBackgroundUpdate,
   toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
@@ -144,4 +146,42 @@ test("historyFieldError reads a string or the first array item", () => {
     "Sticks per day must be between 1 and 100.",
   );
   assert.equal(historyFieldError({ a: ["First.", "Second."] }, "a"), "First.");
+});
+
+test("social notes survive draft recovery and display in the saved background summary", () => {
+  const edited = structuredClone(loaded);
+  const notes = { diet: "Diet detail", sexual: "Sexual history detail", environment: "Environment detail" };
+  for (const [group, note] of Object.entries(notes)) {
+    edited.personalSocial[group].notes = note;
+  }
+  edited.personalSocial.sexual.active = "no";
+  const draft = toDraftBackgroundUpdate(buildBackgroundUpdate(loaded, edited));
+  const resumed = restoreBackgroundUpdate(JSON.parse(JSON.stringify(draft)));
+  const finalized = toRecordBackgroundUpdate(resumed);
+  const background = normalizeBackground(overlayBackgroundUpdate(loaded, resumed));
+
+  for (const [group, note] of Object.entries(notes)) {
+    assert.equal(finalized.sections.social.personalSocial[group].notes, note);
+    const field = BACKGROUND_SECTION_FIELDS.social.find(({ key }) => key === group);
+    assert.ok(field.read(background).includes(note));
+  }
+  assert.deepEqual(background.personalSocial.smoking, loaded.personalSocial.smoking);
+});
+
+test("over-limit social notes stay in the draft and get field-specific final validation", () => {
+  const edited = structuredClone(loaded);
+  const groups = ["diet", "sexual", "environment"];
+  for (const group of groups) {
+    edited.personalSocial[group].notes = "a".repeat(501);
+  }
+  const restored = restoreBackgroundUpdate(toDraftBackgroundUpdate(buildBackgroundUpdate(loaded, edited)));
+  const errors = backgroundUpdateErrors(restored);
+  assert.deepEqual(Object.keys(errors), groups.map(
+    (group) => "background_update.sections.social.personalSocial." + group + ".notes",
+  ));
+  for (const group of groups) {
+    assert.equal(restored.sections.social.personalSocial[group].notes.length, 501);
+    edited.personalSocial[group].notes = "a".repeat(500);
+  }
+  assert.deepEqual(backgroundUpdateErrors(buildBackgroundUpdate(loaded, edited)), {});
 });

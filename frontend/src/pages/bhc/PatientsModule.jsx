@@ -5,7 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import usePagedRows from "../../hooks/usePagedRows";
 import {
+  ActionMenu,
+  FixedTable,
+  TablePagination,
   ConnectionErrorState,
   FilteredEmptyPanel,
   ListFilterPopover,
@@ -33,20 +37,20 @@ import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffService";
-import { getTbEndorsements } from "../../services/tbCaseService";
+import { fetchAllReportPages } from "../../services/reportingLists";
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
 import {
   KIND_TB_ENDORSEMENT,
+  filterMonitoringInbox,
   mergeMonitoringInbox,
   monitoringInboxShowsTbReview,
   monitoringInboxStatusTone,
 } from "../../utils/pendingHandoffInbox";
 import BhcTbEndorsements from "./BhcTbEndorsements";
 
-/** First page of TB endorsements for the unified inbox (API max 100). */
-const TB_INBOX_PER_PAGE = 100;
+const DEFAULT_MONITORING_FILTERS = { search: "", type: "", status: "" };
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -77,22 +81,44 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   // Deep links (legacy tab / case / endorsement) open the existing TB review UI.
   const showTbReview = showHandoffs && monitoringInboxShowsTbReview(params, { canTbEndorsements });
   const showUnifiedInbox = showHandoffs && !showTbReview;
+  const [monitoringFilters, setMonitoringFilters] = useState(DEFAULT_MONITORING_FILTERS);
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
     enabled: showUnifiedInbox,
   });
   const tbInboxQuery = useQuery({
-    queryKey: ["tb-endorsements", "inbox", TB_INBOX_PER_PAGE],
-    queryFn: () => getTbEndorsements(1, "", { perPage: TB_INBOX_PER_PAGE }),
+    queryKey: ["tb-endorsements", "inbox", "all-pages"],
+    queryFn: () => fetchAllReportPages("/tb-endorsements"),
     enabled: showUnifiedInbox && canTbEndorsements,
     retry: false,
   });
   const unifiedInboxRows = mergeMonitoringInbox({
     handoffs: handoffsQuery.data || [],
-    endorsements: tbInboxQuery.data?.data || [],
+    endorsements: tbInboxQuery.data || [],
     includeTb: canTbEndorsements,
   });
+  const visibleInboxRows = filterMonitoringInbox(unifiedInboxRows, monitoringFilters);
+  const monitoringFilterFields = [
+    { key: "type", label: "Type", rowKey: "typeLabel", allLabel: "All types" },
+    { key: "status", label: "Status", rowKey: "statusLabel", allLabel: "All statuses" },
+  ].map(({ key, label, rowKey, allLabel }) => ({
+    key,
+    label,
+    resetValue: "",
+    options: [
+      { value: "", label: allLabel },
+      ...new Set([...unifiedInboxRows.map((row) => row[rowKey]), monitoringFilters[key]].filter(Boolean)),
+    ],
+  }));
+  const activeMonitoringFilters = monitoringFilterFields
+    .filter(({ key }) => monitoringFilters[key])
+    .map(({ key, label }) => ({ key, label: `${label}: ${monitoringFilters[key]}` }));
+  const isMonitoringFiltered = Boolean(monitoringFilters.search.trim() || activeMonitoringFilters.length);
+
+  function clearMonitoringFilters() {
+    setMonitoringFilters(DEFAULT_MONITORING_FILTERS);
+  }
 
   function openMonitoringInboxRow(row) {
     if (row.kind === KIND_TB_ENDORSEMENT) {
@@ -333,7 +359,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
       >
         {/* Toolbar spans the workspace; opening Details only resizes the panes below. */}
         {!showInitialLoading && (
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className={`mb-4 flex flex-wrap justify-between gap-3 ${showUnifiedInbox ? "items-center" : "items-start"}`}>
             <div className="min-w-0 shrink">
               {(!embedded || showEmbeddedHeading) && (
                 <>
@@ -355,11 +381,34 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                 {showTbReview
                   ? "TB endorsement review"
                   : showHandoffs
-                    ? `${unifiedInboxRows.length} monitoring request${unifiedInboxRows.length === 1 ? "" : "s"}`
+                    ? `${visibleInboxRows.length} monitoring request${visibleInboxRows.length === 1 ? "" : "s"}`
                     : patientCountLabel}
               </p>
             </div>
-            {!showHandoffs ? (
+            {showUnifiedInbox ? (
+              <div className="monitoring-search-inline">
+                <SearchFilterCluster
+                  search={
+                    <SearchField
+                      value={monitoringFilters.search}
+                      onChange={(search) => setMonitoringFilters((prev) => ({ ...prev, search }))}
+                      placeholder="Search patient or condition"
+                      label="Search monitoring requests"
+                    />
+                  }
+                  filter={
+                    <ListFilterPopover
+                      fields={monitoringFilterFields}
+                      applied={monitoringFilters}
+                      activeFilters={activeMonitoringFilters}
+                      onApply={({ type, status }) => setMonitoringFilters((prev) => ({ ...prev, type, status }))}
+                      onRemoveFilter={(key) => setMonitoringFilters((prev) => ({ ...prev, [key]: "" }))}
+                      onClearAll={() => setMonitoringFilters((prev) => ({ ...prev, type: "", status: "" }))}
+                    />
+                  }
+                />
+              </div>
+            ) : !showHandoffs ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                 <SearchFilterCluster
                   search={
@@ -468,7 +517,10 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     </p>
                   ) : null}
                   <MonitoringRequestList
-                    rows={unifiedInboxRows}
+                    rows={visibleInboxRows}
+                    filters={monitoringFilters}
+                    filtered={isMonitoringFiltered}
+                    onClearFilters={clearMonitoringFilters}
                     loading={
                       (handoffsQuery.isLoading && !inboxHandoffsReady) ||
                       (canTbEndorsements && tbInboxQuery.isLoading && !tbInboxQuery.data && !tbInboxQuery.error)
@@ -534,7 +586,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   );
 }
 
-function MonitoringRequestList({ rows, loading, onOpen }) {
+function MonitoringRequestList({ rows, filters, loading, filtered, onClearFilters, onOpen }) {
   if (loading && rows.length === 0) {
     return <p className="px-4 py-10 text-sm text-neutral-600">Loading monitoring requests…</p>;
   }
@@ -542,52 +594,70 @@ function MonitoringRequestList({ rows, loading, onOpen }) {
     return (
       <FilteredEmptyPanel
         icon={<Users size={20} className="text-neutral-400" aria-hidden="true" />}
-        title="No monitoring requests"
-        description="RHU Manage to BHC handoffs and TB treatment endorsements for this Barangay Health Center will appear here."
+        title={filtered ? "No matching monitoring requests" : "No monitoring requests"}
+        description={filtered
+          ? "Try another search or clear the filters."
+          : "RHU Manage to BHC handoffs and TB treatment endorsements for this Barangay Health Center will appear here."}
+        onClear={filtered ? onClearFilters : undefined}
       />
     );
   }
+  return <MonitoringRequestTable rows={rows} filters={filters} onOpen={onOpen} />;
+}
+
+function MonitoringRequestTable({ rows, filters, onOpen }) {
+  const { page, setPage, pageRows, totalPages } = usePagedRows(rows, filters);
+  const cellClass = "border-b border-neutral-100 px-3";
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs tabular-nums text-neutral-600">
-        {rows.length} request{rows.length === 1 ? "" : "s"}
-      </p>
-      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-        <div className="hidden h-11 items-center bg-neutral-100 px-4 text-[10px] font-bold uppercase tracking-wide text-neutral-600 md:grid md:grid-cols-[minmax(0,1.4fr)_140px_180px]">
-          <span>Patient / Condition</span>
-          <span>Type</span>
-          <span>Status</span>
-        </div>
-        <ul className="divide-y divide-neutral-100">
-          {rows.map((row) => (
-            <li key={row.key}>
-              <button
-                type="button"
-                onClick={() => onOpen(row)}
-                className="grid w-full grid-cols-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:h-14 md:grid-cols-[minmax(0,1.4fr)_140px_180px] md:py-0"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-ink-800">
-                    {formatPatientName(row.patient) || "Patient"}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-neutral-600">
-                    {row.conditionLabel} · {row.sendingRhu}
-                  </span>
-                </span>
-                <span className="min-w-0 text-xs font-medium text-neutral-700 md:truncate">
-                  {row.typeLabel}
-                </span>
-                <span className="shrink-0">
-                  <PlainStatusStamp
-                    label={row.statusLabel}
-                    tone={monitoringInboxStatusTone(row.status)}
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <FixedTable minWidth="min-w-[720px]" lockHeight={false}>
+        <caption className="sr-only">Monitoring requests</caption>
+        <thead className="bg-neutral-100 text-ink-800">
+          <tr className="text-xs font-semibold">
+            <th scope="col" className="px-3">Sending RHU</th>
+            <th scope="col" className="px-3">Patient</th>
+            <th scope="col" className="px-3">Condition / Service</th>
+            <th scope="col" className="px-3">Status</th>
+            <th scope="col" className="px-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageRows.map((row) => {
+            const name = formatPatientName(row.patient) || "Patient";
+            return (
+              <tr key={row.key} className="text-sm text-ink-800 hover:bg-neutral-50">
+                <td className={cellClass}>{row.sendingRhu}</td>
+                <td className={cellClass}>
+                  <button
+                    type="button"
+                    onClick={() => onOpen(row)}
+                    className="max-w-full truncate rounded-sm text-left font-semibold text-ink-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  >
+                    {name}
+                  </button>
+                </td>
+                <td className={cellClass}>{row.conditionLabel}</td>
+                <td className={cellClass}>
+                  <PlainStatusStamp label={row.statusLabel} tone={monitoringInboxStatusTone(row.status)} />
+                </td>
+                <td className={`${cellClass} w-20 text-right`}>
+                  <ActionMenu
+                    title={name}
+                    subtitle={row.typeLabel}
+                    triggerLabel={`Actions for ${name}`}
+                    actions={[{
+                      label: row.kind === KIND_TB_ENDORSEMENT ? "Open TB endorsement" : "Open monitoring request",
+                      onClick: () => onOpen(row),
+                    }]}
                   />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </FixedTable>
+      <TablePagination alwaysShow currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }

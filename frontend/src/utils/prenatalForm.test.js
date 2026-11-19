@@ -528,11 +528,8 @@ test("the Prenatal form keeps this-pregnancy fields and can mount Section V", ()
   assert.match(panel, /summaryWhenRecorded/);
   assert.match(workspace, /shouldPrefillPrenatalBaseline/);
   assert.match(workspace, /prenatalHistory=\{prenatalHistory\}/);
-  assert.match(workspace, /From Patient History. This visit records Method Used \/ Accepted/);
-  assert.doesNotMatch(workspace, /handleFamilyPlanningChange\("previousMethod"/);
   assert.match(rhuWorkspace, /prenatalHistory=\{prenatalHistory\}/);
   assert.match(rhuWorkspace, /includeObstetricHistory=\{canViewBackground\}/);
-  assert.match(rhuWorkspace, /From Patient History. This visit records Method used/);
   assert.match(obstetric, /Usual menstrual cycle/);
   assert.match(obstetric, /Has menstrual periods/);
   assert.match(obstetric, /Pregnancy is not menopause/);

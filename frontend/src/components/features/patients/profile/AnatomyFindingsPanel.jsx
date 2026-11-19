@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 
 import BodyFigureSvg from "../BodyFigureSvg";
-import FindingLinkOverlay from "./FindingLinkOverlay";
-import { OverviewNote } from "./OverviewCard";
 import LifestyleRow from "./LifestyleRow";
 import PatientClinicalControls from "./PatientClinicalControls";
 import { HeightRuler, WeightAndBmi } from "./BodyMeasures";
@@ -12,7 +10,6 @@ import { buildBodyMeasures } from "../../../../utils/bodyMeasures";
 import { groupFindingsByArea, splitFindingsBySide, summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import { INITIAL_REVEAL, revealFocusReducer } from "../../../../utils/revealFocus";
-import { phaseReached } from "../../../../utils/revealSequence";
 import { shouldShowBmiDisplay, shouldShowLifestyleControls } from "../../../../utils/infantVisibility";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -42,15 +39,11 @@ function caption(summary, hasRecords) {
  * ongoing findings across accessible finalized visits,
  * on an open canvas. Round clinical controls sit to its left and a height
  * rule to its right; weight, BMI and click-to-open lifestyle details sit
- * below. The recorded-areas disclosure keeps findings accessible as a list.
+ * below.
  *
- * Findings lists one row per affected area (side + region). Hovering or
- * focusing a row or a marker (desktop) stages a reveal on the figure: a soft
- * area highlight, then a line (row to marker, or marker to popover), then a
- * small popover of that area's findings. A click or tap pins the popover,
- * whose finding rows open their record; Escape, a click outside, a second
- * click on the same area, or a flip unpins it. A row for the
- * other side only pulses the flip button - the figure never flips by itself.
+ * Hovering or focusing a marker on desktop reveals its area's findings.
+ * Clicking or tapping pins the popover, whose finding rows open their record.
+ * Escape, a click outside, a second click on the same area, or a flip closes it.
  * Below 1024px there are no hover reveals or lines: a tap shows the popover
  * at once. Reduced motion makes every reveal instant. Documentation only -
  * every marker, highlight and line is something a health worker wrote down;
@@ -104,8 +97,7 @@ export default function AnatomyFindingsPanel({
   // A focus whose area is gone (records reloaded) counts as no focus.
   const focus = reveal.focus && areas.some((area) => area.key === reveal.focus.key) ? reveal.focus : null;
   const pinned = reveal.pinned && Boolean(focus);
-  // The element that opened the pinned popover (a Findings row or a marker
-  // button), to take focus back when it closes.
+  // Restore focus to the marker that opened the popover when it closes.
   const opener = pinned ? focus.el || null : null;
   const onSideShown = Boolean(focus) && focus.side === side;
 
@@ -114,8 +106,6 @@ export default function AnatomyFindingsPanel({
   });
   const activeRegion = onSideShown ? focus.region : null;
   const leader = isDesktop && focus?.source === "marker";
-  const flipHint = focus?.source === "row" && focus.side !== side;
-  const showRowLine = isDesktop && focus?.source === "row" && onSideShown && phaseReached(phase, "line");
 
   // The pinned area vanished (records refetched, data changed): clear the
   // stale pin, or the reducer would keep ignoring every hover.
@@ -152,7 +142,7 @@ export default function AnatomyFindingsPanel({
 
   // A click on the opener of the pinned area unpins it: keep focus on that
   // element (a click alone does not focus a button in every browser).
-  // Clicking another row or marker leaves focus where the click put it.
+  // Clicking another marker leaves focus where the click put it.
   function keepFocusOnUnpin(area, el) {
     if (pinned && focus.key === area.key && el && focus.el === el) el.focus();
   }
@@ -181,63 +171,6 @@ export default function AnatomyFindingsPanel({
     dispatch({ type: "click", source: "marker", area, el, currentSide: side });
   }
 
-  function rowEnter(event, area) {
-    if (isDesktop && !openFact) dispatch({ type: "hover", source: "row", area, el: event.currentTarget });
-  }
-  function rowLeave(event, area) {
-    dispatch({ type: "leave", source: "row", key: area.key, el: event.currentTarget });
-  }
-  function rowClick(event, area) {
-    setOpenFact(null);
-    const el = event.currentTarget;
-    keepFocusOnUnpin(area, el);
-    dispatch({ type: "click", source: "row", area, el, currentSide: side });
-  }
-
-  const findings = {
-    title: "Findings",
-    count: areas.length,
-    content:
-      areas.length === 0 ? (
-        <OverviewNote>No body findings recorded.</OverviewNote>
-      ) : (
-        <ul className="divide-y divide-neutral-100">
-          {areas.map((area) => {
-            const active = focus?.key === area.key;
-            return (
-              <li key={area.key}>
-                <button
-                  type="button"
-                  data-reveal-row
-                  aria-expanded={pinned && active}
-                  aria-controls={pinned && active ? popoverId : undefined}
-                  aria-label={`${area.label}, ${plural(area.count, "finding")}${area.side === "back" ? ", back" : ""}`}
-                  onClick={(event) => rowClick(event, area)}
-                  onMouseEnter={(event) => rowEnter(event, area)}
-                  onFocus={(event) => rowEnter(event, area)}
-                  onMouseLeave={(event) => rowLeave(event, area)}
-                  onBlur={(event) => rowLeave(event, area)}
-                  className={`group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center justify-between gap-2 rounded-md px-1.5 py-1.5 text-left text-[13px] transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50${
-                    active ? " bg-brand-50/70" : ""
-                  }`}
-                >
-                  <span className="min-w-0 break-words font-medium text-neutral-800 group-hover:text-neutral-950">
-                    {area.label}
-                    {area.side === "back" && (
-                      <span className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-px text-[11px] font-medium text-neutral-600">
-                        Back
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-neutral-500">{area.count}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ),
-  };
-
   return (
     <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className={`@container/anatomy min-w-0 px-1 py-1 ${vitals ? "patient-anatomy-integrated" : ""}`}>
       <header className={vitals && !loadNote ? "sr-only" : `patient-anatomy-summary-header mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout || hasVitals ? "" : "pr-[6.5rem]"}`}>
@@ -251,7 +184,6 @@ export default function AnatomyFindingsPanel({
       <div className={vitals ? "patient-anatomy-workspace" : "contents"}>
         {vitals && <div className="patient-anatomy-vitals">{vitals}</div>}
         <div ref={panelRef} className="patient-anatomy-layout relative">
-          {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
           {!arcLayout && !hasVitals && (
             <div className="patient-anatomy-controls-row mb-4">
               <PatientClinicalControls
@@ -282,7 +214,6 @@ export default function AnatomyFindingsPanel({
                 birthDate={birthDate}
                 side={side}
                 onToggleSide={toggleSide}
-                flipHint={flipHint}
                 flipCorner="left"
                 findingsByRegion={findingsByRegion}
                 isDesktop={isDesktop}
@@ -346,12 +277,6 @@ export default function AnatomyFindingsPanel({
               />
               {showLifestyle && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} rail />}
             </div>
-          )}
-          {areas.length > 0 && (
-            <details className="mx-auto mt-5 max-w-sm" onToggle={(event) => { if (!event.currentTarget.open) dispatch({ type: "reset" }); }}>
-              <summary className="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium text-neutral-600 focus-visible:outline-2 focus-visible:outline-ink-400">Recorded areas ({areas.length})</summary>
-              <div className="px-3 py-2">{findings.content}</div>
-            </details>
           )}
         </div>
       </div>

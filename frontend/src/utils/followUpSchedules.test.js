@@ -9,6 +9,8 @@ import {
   followUpScheduleReviewRows,
   followUpSchedulesPayload,
   managedReturnRows,
+  getContinuedServicePrograms,
+  servicePurposeKey,
   restoreFollowUpSchedules,
   VISIT_PURPOSE_KEY,
 } from "./followUpSchedules.js";
@@ -158,4 +160,33 @@ test("restore keeps an in-progress concern follow-up even before a date is enter
     restoreFollowUpSchedules([{ purposeKey: "entry:c1", purpose: "Wound", date: "", sourceEntryId: "c1" }]),
     [{ purposeKey: "entry:c1", purpose: "Wound", date: "", time: "", predecessorTaskId: null, sourceEntryId: "c1" }],
   );
+});
+
+test("explicit service returns activate only the selected services without duplicates", () => {
+  const sourceSelectedPrograms = ["Maternal", "Family Planning", "EPI", "Nutrition"];
+  const tasks = ["EPI", "Nutrition", "Family Planning", "EPI", "Maternal"].map((program) => ({
+    purposeKey: servicePurposeKey(program),
+    sourceSelectedPrograms,
+  }));
+  assert.deepEqual(getContinuedServicePrograms(tasks), ["EPI", "Nutrition", "Family Planning"]);
+  assert.deepEqual(getContinuedServicePrograms(tasks.slice(0, 1)), ["EPI"]);
+});
+
+test("legacy returns use their source programs without activating services for concern tasks", () => {
+  assert.deepEqual(getContinuedServicePrograms([
+    { purposeKey: "visit", sourceSelectedPrograms: ["Maternal", "Family Planning"] },
+    { sourceCategory: "Immunization" },
+    { sourceCategory: "Nutrition" },
+  ]), ["Family Planning", "EPI", "Nutrition"]);
+  assert.deepEqual(getContinuedServicePrograms([
+    { purposeKey: "entry:1", sourceSelectedPrograms: ["Family Planning", "EPI", "Nutrition"] },
+    { purposeKey: "continued:2", sourceCategory: "Nutrition" },
+    { purpose: "Immunization follow-up" },
+  ]), []);
+});
+
+test("a linked return continues only services the patient is eligible for", () => {
+  const tasks = ["EPI", "Nutrition"].map((program) => ({ purposeKey: servicePurposeKey(program) }));
+  assert.deepEqual(getContinuedServicePrograms(tasks, { age: 1 }), ["EPI", "Nutrition"]);
+  assert.deepEqual(getContinuedServicePrograms(tasks, { age: 2 }), ["Nutrition"]);
 });
