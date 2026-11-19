@@ -26,9 +26,6 @@ import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
 } from "../../components/features/health-records/BhcHealthRecordPrintDocument";
 import { Button } from "../../components/ui/button";
-import TbCaseRegistrationPanel from "../../components/features/health-records/TbCaseRegistrationPanel";
-import TbDrReferralPanel from "../../components/features/health-records/TbDrReferralPanel";
-import { isRecognizedTbDiagnosis, isDrTb, tbManagementFields } from "../../utils/rhuTbCaseManagement";
 
 import {
   formatLongDate,
@@ -286,10 +283,6 @@ export default function RHURecordDetails() {
               </Button>
             )}
           />
-          {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name)) && (
-            <TbCaseRegistrationPanel key={recordId} recordId={recordId} />
-          )}
-          {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name) && isDrTb(entry) && tbManagementFields(entry).diagnosisType === "tb_disease") && <TbDrReferralPanel key={`dr-${recordId}`} recordId={recordId} />}
         </div>
 
         <div className="hidden print:block">

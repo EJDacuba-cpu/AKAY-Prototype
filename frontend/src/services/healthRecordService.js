@@ -365,6 +365,8 @@ function normalizeRecord(record = {}) {
     supplements_given: supplementsGiven,
     dispensedMedicines,
     dispensed_medicines: dispensedMedicines,
+    itemsPlanned: record.items_planned || record.itemsPlanned || [],
+    items_planned: record.items_planned || record.itemsPlanned || [],
     lmp: normalizedMaternalData.lmp || record.lmp || "",
     pmp: normalizedMaternalData.pmp || record.pmp || "",
     cycleDuration: normalizedMaternalData.cycleDuration || record.cycleDuration || "",

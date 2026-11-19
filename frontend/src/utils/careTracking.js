@@ -17,7 +17,6 @@ import {
   POSTPARTUM_WINDOW_DAYS,
   TB_OUTCOME_LABELS,
   TB_POSITIVE_OUTCOMES,
-  TB_ADHERENCE_WARNING_THRESHOLD,
   EPI_INFANT_SCHEDULE,
   EPI_EXTRA_INDICATORS,
   EPI_FIC_AGE_LIMIT_MONTHS,
@@ -449,12 +448,8 @@ function buildTbEntry(records, today, condition = null) {
     }
   }
 
-  if (tb.adherencePercent) {
-    flags.push({
-      label: `Adherence ${tb.adherencePercent}%`,
-      tone: tb.adherencePercent < TB_ADHERENCE_WARNING_THRESHOLD ? "warning" : "neutral",
-    });
-  }
+  // Adherence % from Form 4B dose calendars is not the Care & Programs signal;
+  // dispense-per-visit chart is the progress view instead.
 
   if (condition) facts.push(monitoringFact(condition));
   if (condition?.status === "under_evaluation" || (!tbRecords.length && evaluationRecords.length)) {

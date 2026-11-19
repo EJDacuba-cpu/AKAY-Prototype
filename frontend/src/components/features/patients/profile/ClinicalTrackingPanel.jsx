@@ -1,19 +1,19 @@
 import { useMemo, useState } from "react";
-import { Line, LineChart, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Line, LineChart, XAxis, YAxis } from "recharts";
 
-import TbTrackingChart from "../../health-records/TbTrackingChart";
 import { Card } from "../../../ui/card";
 import { Button } from "../../../ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../../../ui/chart";
 import { FieldList } from "./ProfileSection";
 import { formatShortDate } from "../../../../utils/patientProfile";
+import { getTbData } from "../../../../utils/healthRecordPrograms";
 import {
   TREND_WINDOW_ALL,
   TREND_WINDOW_OPTIONS,
   bloodPressureTrendPoints,
   fbsChartPoints,
   limitTrendPoints,
-  tbAdherenceTrendPoints,
+  tbDispenseTrendPoints,
 } from "../../../../utils/clinicalTrendSeries";
 
 const BP_CONFIG = {
@@ -25,8 +25,8 @@ const FBS_CONFIG = {
   value: { label: "FBS", color: "var(--color-ink-700)" },
 };
 
-const TB_CONFIG = {
-  adherencePercent: { label: "Adherence %", color: "var(--color-ink-700)" },
+const TB_DISPENSE_CONFIG = {
+  quantityDispensed: { label: "Medicines given", color: "var(--color-ink-700)" },
 };
 
 function ChartEmpty({ title, detail }) {
@@ -107,6 +107,46 @@ function TrendChart({ config, data, children, yUnit = "", labelFormatter, format
   );
 }
 
+function DispenseBarChart({ config, data, labelFormatter, formatter }) {
+  return (
+    <ChartContainer config={config} className="aspect-auto h-[220px] w-full min-w-0">
+      <BarChart data={data} margin={{ left: 8, right: 12, top: 8, bottom: 0 }}>
+        <XAxis
+          dataKey="dateLabel"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={18}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          width={40}
+          allowDecimals={false}
+          label={{ value: "Qty", angle: -90, position: "insideLeft", offset: 8, style: { fill: "#6b7280", fontSize: 11 } }}
+        />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              indicator="dot"
+              labelFormatter={labelFormatter}
+              formatter={formatter}
+            />
+          }
+        />
+        <Bar
+          dataKey="quantityDispensed"
+          name="Medicines given"
+          fill="var(--color-quantityDispensed)"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={36}
+        />
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
 function bpTooltipLabel(_label, payload) {
   const point = payload?.[0]?.payload;
   return point?.tooltipLabel || point?.dateLabel || _label || "";
@@ -163,30 +203,67 @@ function MeasurementChart({ entry, window }) {
     );
   }
   if (entry.key === "tb") {
-    const points = limitTrendPoints(tbAdherenceTrendPoints(entry.records), window);
+    const points = limitTrendPoints(tbDispenseTrendPoints(entry.records), window);
     const latest = (entry.records || []).at(-1);
+    const tb = latest ? getTbData(latest) : {};
+    const caseNumber =
+      entry.facts?.find((fact) => fact.label === "Case No.")?.value || tb.tbCaseNumber || "";
     return (
-      <div className="flex flex-col gap-4">
-        {points.length ? (
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+        <dl className="space-y-3 rounded-lg border border-neutral-200 bg-white p-3">
           <div>
-            <ChartLegend items={[{ label: "Adherence %", color: "var(--color-ink-700)" }]} />
-            <TrendChart config={TB_CONFIG} data={points} yUnit="%">
-              <Line type="monotone" dataKey="adherencePercent" stroke="var(--color-adherencePercent)" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-            </TrendChart>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Case no.</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-[#111827]">{caseNumber || "Not recorded"}</dd>
           </div>
-        ) : (
-          <ChartEmpty title="No documented adherence trend yet" detail="Undocumented doses are not treated as missed, and missing percents are not shown as zero." />
-        )}
-        {latest?.tbData || latest?.tb_data ? (
-          <TbTrackingChart
-            tbData={latest.tbData || latest.tb_data}
-            caseNumber={entry.facts?.find((fact) => fact.label === "Case No.")?.value || ""}
-          />
-        ) : null}
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Registration</dt>
+            <dd className="mt-0.5 text-sm font-medium text-[#111827]">{tb.registrationGroup || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Phase</dt>
+            <dd className="mt-0.5 text-sm font-medium text-[#111827]">{tb.phaseLabel || entry.status || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Last visit</dt>
+            <dd className="mt-0.5 text-sm font-medium text-[#111827]">
+              {entry.lastVisit ? formatShortDate(entry.lastVisit) : "Not recorded"}
+            </dd>
+          </div>
+        </dl>
+        <div className="min-w-0">
+          {points.length ? (
+            <div>
+              <ChartLegend items={[{ label: "Medicines given (qty)", color: "var(--color-ink-700)" }]} />
+              <DispenseBarChart
+                config={TB_DISPENSE_CONFIG}
+                data={points}
+                labelFormatter={tbDispenseTooltipLabel}
+                formatter={tbDispenseTooltipFormatter}
+              />
+            </div>
+          ) : (
+            <ChartEmpty
+              title="No TB visit history yet"
+              detail="Finalized TB consultations appear here. Medicines given at each visit show as bars."
+            />
+          )}
+        </div>
       </div>
     );
   }
   return null;
+}
+
+function tbDispenseTooltipLabel(_label, payload) {
+  const point = payload?.[0]?.payload;
+  return point?.tooltipLabel || point?.dateLabel || _label || "";
+}
+
+function tbDispenseTooltipFormatter(value, _name, item) {
+  const point = item?.payload;
+  const qty = value === null || value === undefined || value === "" ? 0 : value;
+  const summary = point?.medicineSummary || "No medicines dispensed";
+  return `${qty} · ${summary}`;
 }
 
 function visitLabel(record) {

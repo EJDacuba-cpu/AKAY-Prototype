@@ -104,8 +104,20 @@ const DAY_HEADERS = Array.from({ length: DAYS_IN_MONTH }, (_, i) => i + 1);
 const cellInputClass =
   "h-8 w-full min-w-[2.1rem] rounded border border-[#E5E7EB] bg-white px-0.5 text-center text-[11px] font-semibold uppercase text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20";
 
+const viewCellClass =
+  "flex h-8 min-w-[2.1rem] items-center justify-center px-0.5 text-center text-[11px] font-semibold uppercase text-[#0F172A]";
+
 const computedCellClass =
   "px-2 py-1 text-center text-[11px] font-bold text-[#334155]";
+
+function ViewText({ value, empty = "—", className = "", label }) {
+  const text = String(value || "").trim();
+  return (
+    <span className={className} aria-label={label}>
+      {text || empty}
+    </span>
+  );
+}
 
 const MonthRow = memo(function MonthRow({
   month,
@@ -123,55 +135,84 @@ const MonthRow = memo(function MonthRow({
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-red-50 text-[10px] font-bold text-[#B91C1C]">
             {index}
           </span>
-          <input
-            type="text"
-            value={month.label}
-            readOnly={readOnly}
-            maxLength={12}
-            placeholder="MMM-YY"
-            onChange={(e) => onFieldChange(index, "label", e.target.value)}
-            className="h-8 w-[68px] rounded border border-[#E5E7EB] bg-white px-1.5 text-center text-[11px] font-semibold uppercase text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-            aria-label={`Month ${index} label`}
-          />
+          {readOnly ? (
+            <ViewText
+              value={month.label}
+              className="inline-flex h-8 w-[68px] items-center justify-center text-center text-[11px] font-semibold uppercase text-[#0F172A]"
+              label={`Month ${index} label`}
+            />
+          ) : (
+            <input
+              type="text"
+              value={month.label}
+              maxLength={12}
+              placeholder="MMM-YY"
+              onChange={(e) => onFieldChange(index, "label", e.target.value)}
+              className="h-8 w-[68px] rounded border border-[#E5E7EB] bg-white px-1.5 text-center text-[11px] font-semibold uppercase text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+              aria-label={`Month ${index} label`}
+            />
+          )}
         </div>
       </td>
       {month.days.map((cell, dayIdx) => (
         <td key={dayIdx} className="px-0.5 py-1">
-          <input
-            type="text"
-            value={cell}
-            readOnly={readOnly}
-            maxLength={4}
-            onChange={(e) => onDayChange(index, dayIdx, e.target.value)}
-            className={cellInputClass}
-            aria-label={`Month ${index} day ${dayIdx + 1}`}
-          />
+          {readOnly ? (
+            <ViewText
+              value={cell}
+              empty=""
+              className={viewCellClass}
+              label={`Month ${index} day ${dayIdx + 1}`}
+            />
+          ) : (
+            <input
+              type="text"
+              value={cell}
+              maxLength={4}
+              onChange={(e) => onDayChange(index, dayIdx, e.target.value)}
+              className={cellInputClass}
+              aria-label={`Month ${index} day ${dayIdx + 1}`}
+            />
+          )}
         </td>
       ))}
       <td className={computedCellClass}>{month.monthlyTotal}</td>
       <td className={computedCellClass}>{month.cumulativeDoses}</td>
       <td className={computedCellClass}>{month.monthlyPercent}%</td>
       <td className="px-1 py-1">
-        <input
-          type="text"
-          value={month.weightKg}
-          readOnly={readOnly}
-          maxLength={6}
-          onChange={(e) => onFieldChange(index, "weightKg", e.target.value)}
-          className="h-8 w-[52px] rounded border border-[#E5E7EB] bg-white px-1 text-center text-[11px] font-semibold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-          aria-label={`Month ${index} weight`}
-        />
+        {readOnly ? (
+          <ViewText
+            value={month.weightKg}
+            className="inline-flex h-8 w-[52px] items-center justify-center text-center text-[11px] font-semibold text-[#0F172A]"
+            label={`Month ${index} weight`}
+          />
+        ) : (
+          <input
+            type="text"
+            value={month.weightKg}
+            maxLength={6}
+            onChange={(e) => onFieldChange(index, "weightKg", e.target.value)}
+            className="h-8 w-[52px] rounded border border-[#E5E7EB] bg-white px-1 text-center text-[11px] font-semibold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+            aria-label={`Month ${index} weight`}
+          />
+        )}
       </td>
       <td className="px-1 py-1">
-        <input
-          type="text"
-          value={month.heightCm}
-          readOnly={readOnly}
-          maxLength={6}
-          onChange={(e) => onFieldChange(index, "heightCm", e.target.value)}
-          className="h-8 w-[52px] rounded border border-[#E5E7EB] bg-white px-1 text-center text-[11px] font-semibold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-          aria-label={`Month ${index} height`}
-        />
+        {readOnly ? (
+          <ViewText
+            value={month.heightCm}
+            className="inline-flex h-8 w-[52px] items-center justify-center text-center text-[11px] font-semibold text-[#0F172A]"
+            label={`Month ${index} height`}
+          />
+        ) : (
+          <input
+            type="text"
+            value={month.heightCm}
+            maxLength={6}
+            onChange={(e) => onFieldChange(index, "heightCm", e.target.value)}
+            className="h-8 w-[52px] rounded border border-[#E5E7EB] bg-white px-1 text-center text-[11px] font-semibold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+            aria-label={`Month ${index} height`}
+          />
+        )}
       </td>
       {!readOnly && (
         <td className="px-1 py-1">
@@ -289,8 +330,9 @@ export default function TbDoseCalendar({ value, onChange, readOnly = false }) {
                   colSpan={DAYS_IN_MONTH + 7}
                   className="px-4 py-6 text-center text-sm text-slate-400"
                 >
-                  No treatment months yet. Add the first month to begin tracking
-                  supervised doses.
+                  {readOnly
+                    ? "No supervised dose marks recorded for this treatment chart."
+                    : "No treatment months yet. Add the first month to begin tracking supervised doses."}
                 </td>
               </tr>
             ) : (

@@ -1,5 +1,5 @@
 import { groupLabel } from "../../../utils/medicineExpiryGroups";
-import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
+import TbVisitSnapshot from "./TbVisitSnapshot";
 import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "../../../utils/consultationPrograms";
 import {
   Baby,
@@ -259,7 +259,7 @@ function RecordDetailsBody({
     "";
 
   if (programs.includes("TB")) {
-    return withHistory(<TbTreatmentCardForm value={normalizeTbData(record.tbData || record.tb_data)} readOnly recordId={record.id} />);
+    return withHistory(<TbVisitSnapshot record={record} />);
   }
 
   if (isImmunizationRecord) {

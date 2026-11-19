@@ -132,6 +132,63 @@ export function tbAdherenceTrendPoints(records = []) {
   });
 }
 
+function dispensedMedicineLines(record = {}) {
+  const medicines =
+    record.dispensedMedicines ||
+    record.dispensed_medicines ||
+    record.healthRecordMedicines ||
+    record.health_record_medicines ||
+    record.itemsPlanned ||
+    record.items_planned ||
+    [];
+  return Array.isArray(medicines) ? medicines.filter(Boolean) : [];
+}
+
+function medicineLineQuantity(line = {}) {
+  const qty = toNumber(line.quantity ?? line.qty ?? line.authorizedQuantity ?? line.authorized_quantity);
+  return qty === null ? 0 : qty;
+}
+
+function medicineLineLabel(line = {}) {
+  return String(
+    line.medicineName ||
+      line.medicine_name ||
+      line.name ||
+      line.itemDescription ||
+      line.item_description ||
+      "",
+  ).trim();
+}
+
+/**
+ * One point per dated TB visit: total dispensed medicine quantity that visit.
+ * Visits without dispense stay on the chart at 0 so follow-ups are still visible.
+ */
+export function tbDispenseTrendPoints(records = []) {
+  return withDayLabels(datedRecords(records)).map((item) => {
+    const lines = dispensedMedicineLines(item.record);
+    const quantityDispensed = lines.reduce((sum, line) => sum + medicineLineQuantity(line), 0);
+    const medicineLabels = lines
+      .map((line) => {
+        const name = medicineLineLabel(line);
+        const qty = medicineLineQuantity(line);
+        const unit = String(line.unit || "").trim();
+        if (!name) return "";
+        return [name, qty ? `${qty}${unit ? ` ${unit}` : ""}` : ""].filter(Boolean).join(" × ");
+      })
+      .filter(Boolean);
+    const tb = getTbData(item.record);
+    return {
+      ...pointMeta(item),
+      quantityDispensed,
+      medicineLabels,
+      medicineSummary: medicineLabels.length ? medicineLabels.join("; ") : "No medicines dispensed",
+      tbCaseNumber: tb.tbCaseNumber || "",
+      hasDispense: quantityDispensed > 0 || lines.length > 0,
+    };
+  });
+}
+
 /** Keep chronological order; optionally keep only the latest N plotted points. */
 export function limitTrendPoints(points = [], window = TREND_WINDOW_ALL) {
   const list = Array.isArray(points) ? points : [];

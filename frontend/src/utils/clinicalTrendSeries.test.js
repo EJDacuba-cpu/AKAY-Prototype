@@ -7,6 +7,7 @@ import {
   fbsTrendPoints,
   limitTrendPoints,
   tbAdherenceTrendPoints,
+  tbDispenseTrendPoints,
 } from "./clinicalTrendSeries.js";
 
 test("BP trends keep dated systolic and diastolic pairs and skip blanks", () => {
@@ -87,8 +88,39 @@ test("TB adherence points omit undocumented percents instead of treating them as
   assert.deepEqual(points.map((point) => point.adherencePercent), [92, 88]);
 });
 
+test("TB dispense points total medicines given per visit and keep zero-dispense visits", () => {
+  const points = tbDispenseTrendPoints([
+    {
+      id: 1,
+      dateOfVisit: "2026-03-01",
+      tbData: { diagnosis: { tbCaseNumber: "TB-1" } },
+      dispensedMedicines: [{ medicineName: "RHZE", quantity: 28, unit: "tablet" }],
+    },
+    {
+      id: 2,
+      dateOfVisit: "2026-04-01",
+      tbData: { diagnosis: { tbCaseNumber: "TB-1" } },
+      dispensed_medicines: [],
+    },
+    {
+      id: 3,
+      dateOfVisit: "2026-05-01",
+      dispensedMedicines: [
+        { medicineName: "RHZE", quantity: 14, unit: "tablet" },
+        { medicineName: "Pyridoxine", quantity: 14, unit: "tablet" },
+      ],
+    },
+  ]);
+  assert.equal(points.length, 3);
+  assert.deepEqual(points.map((point) => point.quantityDispensed), [28, 0, 28]);
+  assert.match(points[0].medicineSummary, /RHZE/);
+  assert.equal(points[1].medicineSummary, "No medicines dispensed");
+  assert.match(points[2].medicineSummary, /Pyridoxine/);
+});
+
 test("empty measurement history stays empty", () => {
   assert.deepEqual(bloodPressureTrendPoints([]), []);
   assert.deepEqual(fbsTrendPoints([{ id: 1, dateOfVisit: "2026-01-01" }]), []);
   assert.deepEqual(tbAdherenceTrendPoints([]), []);
+  assert.deepEqual(tbDispenseTrendPoints([]), []);
 });
