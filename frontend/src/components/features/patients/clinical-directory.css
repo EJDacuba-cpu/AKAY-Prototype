@@ -542,3 +542,18 @@
 @media (hover: hover) {
   .patients-fab:hover .patients-fab__tooltip { opacity: 1; transform: translate(0, -50%); }
 }
+.monitoring-search-inline {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .625rem;
+}
+
+.monitoring-search-inline .search-filter-cluster__search {
+  width: 18rem;
+  min-width: 0;
+  max-width: 100%;
+}
