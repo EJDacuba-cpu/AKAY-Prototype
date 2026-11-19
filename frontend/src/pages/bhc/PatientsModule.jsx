@@ -39,6 +39,7 @@ import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
 import {
   KIND_TB_ENDORSEMENT,
+  filterMonitoringInbox,
   mergeMonitoringInbox,
   monitoringInboxShowsTbReview,
   monitoringInboxStatusTone,
@@ -47,6 +48,7 @@ import BhcTbEndorsements from "./BhcTbEndorsements";
 
 /** First page of TB endorsements for the unified inbox (API max 100). */
 const TB_INBOX_PER_PAGE = 100;
+const DEFAULT_MONITORING_FILTERS = { search: "", type: "", status: "" };
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -77,6 +79,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   // Deep links (legacy tab / case / endorsement) open the existing TB review UI.
   const showTbReview = showHandoffs && monitoringInboxShowsTbReview(params, { canTbEndorsements });
   const showUnifiedInbox = showHandoffs && !showTbReview;
+  const [monitoringFilters, setMonitoringFilters] = useState(DEFAULT_MONITORING_FILTERS);
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
@@ -93,6 +96,27 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     endorsements: tbInboxQuery.data?.data || [],
     includeTb: canTbEndorsements,
   });
+  const visibleInboxRows = filterMonitoringInbox(unifiedInboxRows, monitoringFilters);
+  const monitoringFilterFields = [
+    { key: "type", label: "Type", rowKey: "typeLabel", allLabel: "All types" },
+    { key: "status", label: "Status", rowKey: "statusLabel", allLabel: "All statuses" },
+  ].map(({ key, label, rowKey, allLabel }) => ({
+    key,
+    label,
+    resetValue: "",
+    options: [
+      { value: "", label: allLabel },
+      ...new Set([...unifiedInboxRows.map((row) => row[rowKey]), monitoringFilters[key]].filter(Boolean)),
+    ],
+  }));
+  const activeMonitoringFilters = monitoringFilterFields
+    .filter(({ key }) => monitoringFilters[key])
+    .map(({ key, label }) => ({ key, label: `${label}: ${monitoringFilters[key]}` }));
+  const isMonitoringFiltered = Boolean(monitoringFilters.search.trim() || activeMonitoringFilters.length);
+
+  function clearMonitoringFilters() {
+    setMonitoringFilters(DEFAULT_MONITORING_FILTERS);
+  }
 
   function openMonitoringInboxRow(row) {
     if (row.kind === KIND_TB_ENDORSEMENT) {
@@ -333,7 +357,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
       >
         {/* Toolbar spans the workspace; opening Details only resizes the panes below. */}
         {!showInitialLoading && (
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className={`mb-4 flex flex-wrap justify-between gap-3 ${showUnifiedInbox ? "items-center" : "items-start"}`}>
             <div className="min-w-0 shrink">
               {(!embedded || showEmbeddedHeading) && (
                 <>
@@ -355,11 +379,34 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                 {showTbReview
                   ? "TB endorsement review"
                   : showHandoffs
-                    ? `${unifiedInboxRows.length} monitoring request${unifiedInboxRows.length === 1 ? "" : "s"}`
+                    ? `${visibleInboxRows.length} monitoring request${visibleInboxRows.length === 1 ? "" : "s"}`
                     : patientCountLabel}
               </p>
             </div>
-            {!showHandoffs ? (
+            {showUnifiedInbox ? (
+              <div className="ml-auto flex min-w-0 max-w-full justify-end">
+                <SearchFilterCluster
+                  search={
+                    <SearchField
+                      value={monitoringFilters.search}
+                      onChange={(search) => setMonitoringFilters((prev) => ({ ...prev, search }))}
+                      placeholder="Search patient or condition"
+                      label="Search monitoring requests"
+                    />
+                  }
+                  filter={
+                    <ListFilterPopover
+                      fields={monitoringFilterFields}
+                      applied={monitoringFilters}
+                      activeFilters={activeMonitoringFilters}
+                      onApply={({ type, status }) => setMonitoringFilters((prev) => ({ ...prev, type, status }))}
+                      onRemoveFilter={(key) => setMonitoringFilters((prev) => ({ ...prev, [key]: "" }))}
+                      onClearAll={() => setMonitoringFilters((prev) => ({ ...prev, type: "", status: "" }))}
+                    />
+                  }
+                />
+              </div>
+            ) : !showHandoffs ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                 <SearchFilterCluster
                   search={
@@ -468,7 +515,9 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     </p>
                   ) : null}
                   <MonitoringRequestList
-                    rows={unifiedInboxRows}
+                    rows={visibleInboxRows}
+                    filtered={isMonitoringFiltered}
+                    onClearFilters={clearMonitoringFilters}
                     loading={
                       (handoffsQuery.isLoading && !inboxHandoffsReady) ||
                       (canTbEndorsements && tbInboxQuery.isLoading && !tbInboxQuery.data && !tbInboxQuery.error)
@@ -534,7 +583,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   );
 }
 
-function MonitoringRequestList({ rows, loading, onOpen }) {
+function MonitoringRequestList({ rows, loading, filtered, onClearFilters, onOpen }) {
   if (loading && rows.length === 0) {
     return <p className="px-4 py-10 text-sm text-neutral-600">Loading monitoring requests…</p>;
   }
@@ -542,8 +591,11 @@ function MonitoringRequestList({ rows, loading, onOpen }) {
     return (
       <FilteredEmptyPanel
         icon={<Users size={20} className="text-neutral-400" aria-hidden="true" />}
-        title="No monitoring requests"
-        description="RHU Manage to BHC handoffs and TB treatment endorsements for this Barangay Health Center will appear here."
+        title={filtered ? "No matching monitoring requests" : "No monitoring requests"}
+        description={filtered
+          ? "Try another search or clear the filters."
+          : "RHU Manage to BHC handoffs and TB treatment endorsements for this Barangay Health Center will appear here."}
+        onClear={filtered ? onClearFilters : undefined}
       />
     );
   }

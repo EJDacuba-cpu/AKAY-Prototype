@@ -4,6 +4,7 @@ import {
   KIND_MONITORING_HANDOFF,
   KIND_TB_ENDORSEMENT,
   clearTbReviewSearchParams,
+  filterMonitoringInbox,
   mergeMonitoringInbox,
   monitoringInboxShowsTbReview,
   monitoringInboxStatusTone,
@@ -42,6 +43,11 @@ test("mergeMonitoringInbox combines handoffs and TB endorsements with type label
   assert.equal(rows[1].kind, KIND_MONITORING_HANDOFF);
   assert.equal(rows[1].typeLabel, "Monitoring handoff");
   assert.equal(rows[1].conditionLabel, "Hypertension");
+  assert.deepEqual(filterMonitoringInbox(rows, { search: "  ada lovelace " }), [rows[1]]);
+  assert.deepEqual(filterMonitoringInbox(rows, { search: "tb-001", type: "TB endorsement" }), [rows[0]]);
+  assert.deepEqual(filterMonitoringInbox(rows, { search: "central rhu", status: "Pending Review" }), [rows[1]]);
+  assert.deepEqual(filterMonitoringInbox(rows, { type: "TB endorsement", status: "Pending Review" }), []);
+  assert.deepEqual(filterMonitoringInbox(rows), rows);
 });
 
 test("service handoffs show health service label in the unified inbox", () => {
