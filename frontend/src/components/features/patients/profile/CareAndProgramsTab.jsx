@@ -9,6 +9,7 @@ import ProfileCardsSkeleton from "./ProfileCardsSkeleton";
 import ClinicalTrackingPanel from "./ClinicalTrackingPanel";
 import CloseNutritionCareModal from "./CloseNutritionCareModal";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
+import EpiTrackingPanel from "./EpiTrackingPanel";
 import MaternalTrackingPanel from "./MaternalTrackingPanel";
 import NutritionTrackingPanel from "./NutritionTrackingPanel";
 import PatientLaboratorySection from "./PatientLaboratorySection";
@@ -207,6 +208,12 @@ export default function CareAndProgramsTab({
         <div ref={detailRef} className="mt-5">
           {isError || trackingLoading ? null : selectedEntry?.key === "maternal" ? (
             <MaternalTrackingPanel summary={maternalSummary} status={selectedEntry.status} onViewRecords={() => onViewProgramRecords?.("maternal")} />
+          ) : selectedEntry?.key === "epi" ? (
+            <EpiTrackingPanel
+              entry={selectedEntry}
+              onViewRecords={onViewProgramRecords}
+              onViewRecord={onViewRecord}
+            />
           ) : selectedEntry?.key === "nutrition" ? (
             <NutritionTrackingPanel
               history={selectedEntry.measurementHistory || []}
