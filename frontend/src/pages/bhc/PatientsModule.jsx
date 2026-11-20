@@ -156,6 +156,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     isRefreshing,
     filterOptions,
   } = usePatients(role);
+  const [searchInput, setSearchInput] = useState("");
   const resultsRef = useRef(null);
   // The details panel starts collapsed; a card click selects a patient and opens it.
   const [panel, setPanel] = useState({ selectedId: null, open: false });
@@ -316,10 +317,12 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   }
 
   function clearFilters() {
+    setSearchInput("");
     setFilters(DEFAULT_FILTERS);
   }
 
   function removeFilter(key) {
+    if (key === "search") setSearchInput("");
     const resetValues = {
       search: "",
       barangay: "All Barangays",
@@ -420,11 +423,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                 <SearchFilterCluster
                   search={
                     <SearchField
-                      value={filters.search}
-                      onChange={(value) =>
-                        setFilters((prev) => ({ ...prev, search: value }))
-                      }
-                      placeholder="Search name, ID, or contact number..."
+                      value={searchInput}
+                      onChange={setSearchInput}
+                      onSubmit={(search) => setFilters((prev) => ({ ...prev, search }))}
+                      onClear={() => {
+                        setSearchInput("");
+                        setFilters((prev) => ({ ...prev, search: "" }));
+                      }}
+                      placeholder="Search name, ID, or contact (Enter)"
                       label="Search patients"
                     />
                   }

@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { listPatientsPage } from "../services/patientService";
@@ -46,12 +46,6 @@ function dedupePatients(pages = []) {
 
 export default function usePatients(role = "bhc") {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  // Keep typing snappy; the directory query follows the deferred search value.
-  const deferredSearch = useDeferredValue(filters.search);
-  const queryFilters = useMemo(
-    () => ({ ...filters, search: deferredSearch }),
-    [filters, deferredSearch],
-  );
 
   const {
     data,
@@ -63,9 +57,9 @@ export default function usePatients(role = "bhc") {
     fetchNextPage,
     hasNextPage,
   } = useInfiniteQuery({
-    queryKey: [...queryKeys.patients(role), "directory", queryFilters],
+    queryKey: [...queryKeys.patients(role), "directory", filters],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => listPatientsPage(directoryParams(queryFilters, pageParam)),
+    queryFn: ({ pageParam }) => listPatientsPage(directoryParams(filters, pageParam)),
     getNextPageParam: (lastPage) => {
       const current = Number(lastPage?.meta?.current_page) || 1;
       const last = Number(lastPage?.meta?.last_page) || 1;
