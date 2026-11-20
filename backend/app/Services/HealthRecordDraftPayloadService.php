@@ -692,6 +692,21 @@ class HealthRecordDraftPayloadService
 
     public function sanitize(array $payload): array
     {
+        if (is_array($payload['immunizationData'] ?? null)) {
+            $epi = $payload['immunizationData'];
+            $entries = $epi['vaccineEntries'] ?? $epi['vaccinesGiven'] ?? null;
+            unset($epi['newbornScreening'], $epi['newborn_screening'], $epi['vaccinesGiven']);
+            if (is_array($entries) && array_is_list($entries)) {
+                $epi['vaccineEntries'] = array_values(array_filter($entries, static function ($entry) {
+                    $label = is_array($entry)
+                        ? ($entry['vaccineName'] ?? $entry['vaccine_name'] ?? $entry['name'] ?? $entry['vaccine'] ?? '')
+                        : $entry;
+                    return ! is_string($label) || ! preg_match('/^(?:newborn[\s_-]*screening|nbs)$/i', trim($label));
+                }));
+            }
+            $payload['immunizationData'] = $epi;
+        }
+
         // Drafts saved before the ITR Patient History rework stage the update in
         // the old string shapes, which no longer validate. Drop it so they open.
         if (is_array($payload['backgroundUpdate'] ?? null) && PatientBackground::isLegacyUpdate($payload['backgroundUpdate'])) {

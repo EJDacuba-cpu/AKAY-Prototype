@@ -1,14 +1,11 @@
 import { applyEstablishedTbDiseaseAssessment } from "./establishedTbDisease.js";
+import { followUpLinkedEntryId } from "../components/features/followups/followUpListDisplay.js";
+import { entryDestinations } from "./reportingEntries.js";
 import { emptyRhuDiagnosis, matchingMonitorableCondition } from "./rhuCarePlan.js";
 import { tbManagementFields, tbManagementFor } from "./tbAssessment.js";
 
 function text(value) {
   return String(value ?? "").trim();
-}
-
-function purposeEntryId(purposeKey) {
-  const key = text(purposeKey);
-  return key.startsWith("entry:") ? key.slice("entry:".length) : "";
 }
 
 function parentDiagnoses(record) {
@@ -49,7 +46,7 @@ export function focusedRhuFollowUp({
     return { focused: null, diagnoses: [], references: [], linkedTaskId: null };
   }
 
-  const entryId = purposeEntryId(task.purposeKey || task.purpose_key);
+  const entryId = followUpLinkedEntryId(task);
   const diagnoses = parentDiagnoses(parentRecord);
   const matched = entryId
     ? diagnoses.find((entry) => text(entry?.id) === entryId)
@@ -92,7 +89,43 @@ function recordId(record) {
 function parentForTask(task, parentRecords) {
   const parentId = Number(task?.healthRecordId || task?.originalHealthRecordId || 0);
   if (!parentId) return null;
-  return (parentRecords || []).find((record) => recordId(record) === parentId) || null;
+  return (parentRecords || []).find((record) => recordId(record) === parentId) || task.healthRecord || null;
+}
+
+/** Reporting belongs to the visit where this particular diagnosis was classified. */
+export function reportedFollowUpDiagnosisIds(tasks, patientRecords) {
+  const reported = new Set();
+  if (!tasks.length) return reported;
+  const records = new Map(patientRecords.map((record) => [recordId(record), record]));
+  for (const task of tasks) {
+    const entryId = followUpLinkedEntryId(task);
+    if (!entryId) continue;
+    const seen = new Set();
+    const sources = [
+      records.get(Number(task.originalHealthRecordId)),
+      task.healthRecord,
+      records.get(Number(task.healthRecordId)),
+    ];
+    while (sources.length) {
+      const record = sources.pop();
+      if (!record || seen.has(record)) continue;
+      seen.add(record);
+      const entry = parentDiagnoses(record).find((item) => text(item.id) === entryId);
+      if (entryDestinations(entry).length) {
+        reported.add(entryId);
+        break;
+      }
+      sources.push(record.parent_record, records.get(Number(record.parentHealthRecordId || record.parent_health_record_id)));
+    }
+  }
+  return reported;
+}
+
+export function excludePriorReportSelections(diagnoses, reportedIds) {
+  if (!reportedIds.size) return diagnoses;
+  return diagnoses.map((entry) => reportedIds.has(entry.id) && entryDestinations(entry).length
+    ? { ...entry, reportIn: [], reportAs: null, includeInSurveillance: false }
+    : entry);
 }
 
 /** Focus every explicitly selected RHU follow-up; unrelated conditions stay references. */

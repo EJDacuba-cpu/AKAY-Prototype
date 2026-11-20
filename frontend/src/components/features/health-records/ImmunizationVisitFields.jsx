@@ -7,7 +7,7 @@ import {
   FieldTextarea,
   FieldError,
 } from "./fields/ClinicalFields";
-import { formatEpiDate, getEpiCode } from "../../../utils/epiTracking";
+import { getEpiCode } from "../../../utils/epiTracking";
 import { visibleEpiVaccineOptions } from "../../../utils/epiApplicability";
 import { normalizeVaccineName } from "../../../utils/healthRecordPrograms";
 import {
@@ -16,6 +16,7 @@ import {
   CPAB_STATUS_OPTIONS,
   emptyMaternalEvidenceRow,
   findDoseOption,
+  isNonVaccineLabel,
   needsBirthDoseTime,
   vaccineEntryConflicts,
 } from "../../../utils/epiVaccineCatalog";
@@ -41,20 +42,6 @@ function toDateInputValue(value) {
   return match ? match[1] : "";
 }
 
-/**
- * Services recorded on the EPI form that are screenings rather than vaccines.
- * These stay inside the same `vaccineEntries` data model.
- */
-export const ESSENTIAL_SERVICE_LABELS = ["Newborn Screening"];
-
-const DISPLAY_LABELS = {
-  "Newborn Screening": "Newborn Screening (NBS) Done",
-};
-
-function displayLabel(storedName) {
-  return DISPLAY_LABELS[storedName] || storedName;
-}
-
 const DEFAULT_BREASTFEEDING_MONTHS = [
   { key: "month1", label: "1 Month" },
   { key: "month2", label: "2 Months" },
@@ -63,16 +50,6 @@ const DEFAULT_BREASTFEEDING_MONTHS = [
   { key: "month5", label: "5 Months" },
   { key: "month6", label: "6 Months" },
 ];
-
-function isEssentialService(label) {
-  return ESSENTIAL_SERVICE_LABELS.some(
-    (service) => service.toLowerCase() === String(label).toLowerCase(),
-  );
-}
-
-function isCpabLabel(label) {
-  return normalizeVaccineName(label) === "CPAB";
-}
 
 /**
  * Compact EPI visit form: Vaccine → Dose → Date → Add tracking list,
@@ -109,7 +86,6 @@ export default function ImmunizationVisitFields({
   onWeightChange,
   onHeightChange,
   onBreastfeedingChange,
-  onToggleVaccine,
   onVaccineFieldChange,
   onAddVaccineEntry,
   onRemoveVaccineEntry,
@@ -117,7 +93,6 @@ export default function ImmunizationVisitFields({
   onMaternalEvidenceChange,
   onNotesChange,
 }) {
-  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
   const historyByCode = epiHistoryByCode || new Map();
   const tracksHistory = Boolean(epiHistoryByCode);
   const visitDay = toDateInputValue(visitDate);
@@ -132,13 +107,9 @@ export default function ImmunizationVisitFields({
       })
     : vaccineOptions;
 
-  const essentialOptions = visibleOptions.filter(isEssentialService);
-  const vaccineOnlyOptions = visibleOptions.filter(
-    (option) => !isEssentialService(option) && !isCpabLabel(option),
-  );
-  const catalogKey = vaccineOnlyOptions.join("|");
+  const catalogKey = visibleOptions.join("|");
   const catalog = useMemo(
-    () => buildVaccineDoseCatalog(vaccineOnlyOptions),
+    () => buildVaccineDoseCatalog(visibleOptions),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by stable join of option labels
     [catalogKey],
   );
@@ -195,28 +166,8 @@ export default function ImmunizationVisitFields({
       timeGiven: showTime ? draftTime : "",
     };
 
-    if (typeof onAddVaccineEntry === "function") {
-      onAddVaccineEntry(entry);
-    } else if (typeof onToggleVaccine === "function") {
-      onToggleVaccine(storedLabel, true);
-      if (dateGiven && onVaccineFieldChange) {
-        onVaccineFieldChange(storedLabel, "dateGiven", dateGiven);
-      }
-      if (showTime && draftTime && onVaccineFieldChange) {
-        onVaccineFieldChange(storedLabel, "timeGiven", draftTime);
-      }
-    }
+    onAddVaccineEntry(entry);
     resetDraft();
-  }
-
-  function handleRemove(entry, index) {
-    if (typeof onRemoveVaccineEntry === "function") {
-      onRemoveVaccineEntry(entry, index);
-      return;
-    }
-    if (typeof onToggleVaccine === "function") {
-      onToggleVaccine(entry.vaccineName, false);
-    }
   }
 
   function updateEntryField(entry, index, field, value) {
@@ -228,25 +179,6 @@ export default function ImmunizationVisitFields({
         onVaccineFieldChange(entry.vaccineName, field, value);
       }
     }
-  }
-
-  function renderEssentialOption(storedName) {
-    const lockedEntry = tracksHistory
-      ? historyByCode.get(getEpiCode(storedName))
-      : null;
-    const locked = Boolean(lockedEntry);
-    const givenDate = formatEpiDate(lockedEntry?.dateGiven);
-
-    return (
-      <ClinicalCheckbox
-        key={storedName}
-        label={displayLabel(storedName)}
-        checked={selectedVaccines.has(storedName)}
-        locked={locked}
-        lockedNote={`Already given${givenDate ? ` on ${givenDate}` : ""}`}
-        onChange={(checked) => onToggleVaccine?.(storedName, checked)}
-      />
-    );
   }
 
   function addEvidenceRow() {
@@ -318,18 +250,6 @@ export default function ImmunizationVisitFields({
           )}
         </div>
       </ClinicalSection>
-      )}
-
-      {essentialOptions.length > 0 && (
-        <ClinicalSection
-          title="Essential Services / Screening"
-          subtitle="Record newborn screening status for this child."
-        >
-          <FieldEyebrow>Newborn Services</FieldEyebrow>
-          <div className="flex flex-col gap-2.5">
-            {essentialOptions.map(renderEssentialOption)}
-          </div>
-        </ClinicalSection>
       )}
 
       <ClinicalSection
@@ -429,7 +349,7 @@ export default function ImmunizationVisitFields({
           Use the date the dose was actually given.
         </p>
 
-        {entries.filter((entry) => !isEssentialService(entry.vaccineName) && !isCpabLabel(entry.vaccineName)).length > 0 ? (
+        {entries.some((entry) => !isNonVaccineLabel(entry.vaccineName)) ? (
           <div className="mt-4 overflow-x-auto rounded-xl border border-neutral-200">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-neutral-50 text-[10px] uppercase tracking-wide text-neutral-500">
@@ -443,7 +363,7 @@ export default function ImmunizationVisitFields({
               </thead>
               <tbody>
                 {entries.map((entry, index) => {
-                  if (isEssentialService(entry.vaccineName) || isCpabLabel(entry.vaccineName)) {
+                  if (isNonVaccineLabel(entry.vaccineName)) {
                     return null;
                   }
                   const timed = needsTimeGiven(entry.vaccineName);
@@ -475,7 +395,7 @@ export default function ImmunizationVisitFields({
                         <button
                           type="button"
                           className="text-xs font-semibold text-red-700"
-                          onClick={() => handleRemove(entry, index)}
+                          onClick={() => onRemoveVaccineEntry(entry, index)}
                         >
                           Remove
                         </button>
@@ -508,7 +428,7 @@ export default function ImmunizationVisitFields({
                 </span>
                 <span className="font-bold text-[#B91C1C]">
                   {epiCompletion.remainingItems
-                    .map((item) => displayLabel(item.label))
+                    .map((item) => item.label)
                     .join(", ")}
                 </span>
               </p>

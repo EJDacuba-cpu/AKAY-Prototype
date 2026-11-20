@@ -1,11 +1,49 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { focusedRhuFollowUp, focusedRhuFollowUps } from "./rhuFollowUpFocus.js";
+import { excludePriorReportSelections, focusedRhuFollowUp, focusedRhuFollowUps, reportedFollowUpDiagnosisIds } from "./rhuFollowUpFocus.js";
+import { diagnosesForRhuSave, restoreRhuDiagnoses } from "./rhuCarePlan.js";
 
 const HTN = { id: 11, conditionName: "Hypertension", status: "active", conditionIdentity: "hypertension" };
 const DM = { id: 12, conditionName: "Diabetes Mellitus", status: "active", conditionIdentity: "diabetes_mellitus" };
 const ASTHMA = { id: 13, conditionName: "Asthma", status: "controlled", conditionIdentity: "name:asthma" };
+
+test("a reported diagnosis stays on its original visit across follow-ups and draft recovery", () => {
+  const initial = { id: 1, diagnoses: [
+    { id: "tb", name: "TB", reportIn: ["notifiable"] },
+    { id: "dm", name: "Diabetes", reportIn: [] },
+  ] };
+  const second = { id: 2, parentHealthRecordId: 1, diagnoses: [
+    { id: "tb", name: "TB", reportIn: [] }, { id: "dm", name: "Diabetes", reportIn: [] },
+  ] };
+  const tasks = [
+    { healthRecordId: 2, purposeKey: "entry:tb" },
+    { healthRecordId: 2, sourceEntryId: "dm" },
+  ];
+  const unrelated = { id: 3, diagnoses: [{ id: "dm", name: "Diabetes", reportIn: ["morbidity"] }] };
+  const reported = reportedFollowUpDiagnosisIds(tasks, [second, unrelated, initial]);
+  assert.deepEqual([...reported], ["tb"]);
+  const draft = restoreRhuDiagnoses({ diagnoses: [
+    { id: "tb", name: "TB", continued: true, reportIn: ["notifiable"], nextAction: "rhu_follow_up" },
+    { id: "dm", name: "Diabetes", continued: true, reportIn: ["morbidity"] },
+    { id: "new", name: "Asthma", reportIn: ["surveillance"] },
+  ] });
+  const saved = diagnosesForRhuSave(excludePriorReportSelections(draft, reported));
+  assert.deepEqual(saved.map(entry => entry.reportIn), [[], ["morbidity"], ["surveillance"]]);
+  assert.equal(saved[0].nextAction, "rhu_follow_up");
+  assert.deepEqual(initial.diagnoses[0].reportIn, ["notifiable"]);
+});
+
+test("each report can establish prior classification from the linked task's source record", () => {
+  for (const classification of [{ reportAs: "morbidity" }, { reportAs: "notifiable" }, { includeInSurveillance: true }]) {
+    const task = { sourceEntryId: "dx", healthRecordId: 1, healthRecord: {
+      id: 1, diagnoses: [{ id: "dx", name: "TB", ...classification }],
+    } };
+    assert.deepEqual([...reportedFollowUpDiagnosisIds([task], [])], ["dx"]);
+    assert.equal(focusedRhuFollowUps({ tasks: [task] }).diagnoses[0].id, "dx");
+    assert.deepEqual([...reportedFollowUpDiagnosisIds([{ ...task, sourceEntryId: "", purpose: "TB" }], [])], []);
+  }
+});
 
 test("a scheduled RHU follow-up focuses only the associated condition", () => {
   const result = focusedRhuFollowUp({

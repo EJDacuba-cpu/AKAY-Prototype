@@ -41,8 +41,7 @@ export const TB_ADHERENCE_WARNING_THRESHOLD = 90;
 /**
  * The Fully Immunized Child (FIC) antigen set: the doses counted toward EPI
  * Care Tracking progress. A subset of `EPI_VACCINE_ROWS` in
- * healthRecordPrograms.js - that list also carries indicators (Newborn
- * Screening, CPAB, HPV) that are not part of the infant immunization series
+ * healthRecordPrograms.js - that list also carries indicators (CPAB, HPV) that are not part of the infant immunization series
  * and must not count toward "X of Y applicable doses".
  *
  * TODO(validate): confirm this set against the local FHSIS/EPI schedule
@@ -68,7 +67,6 @@ export const EPI_INFANT_SCHEDULE = Object.freeze([
 
 /** Indicators tracked as separate chips, excluded from the infant dose count. */
 export const EPI_EXTRA_INDICATORS = Object.freeze([
-  "Newborn Screening",
   "CPAB",
   "HPV",
 ]);

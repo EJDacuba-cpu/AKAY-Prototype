@@ -21,9 +21,7 @@ export const PRINT_DOCUMENT_STYLES = `
     border-bottom: 1px solid #d1d5db; }
   th { text-align: left; font-weight: 700; }
   td.num, th.num { text-align: right; }
-  .akay-summary-print-table th:first-child { width: 44%; }
   .akay-summary-print-table th:nth-child(2) { width: 12%; }
-  .akay-summary-print-table th:last-child { width: 44%; }
   .akay-summary-print-table th:nth-child(2),
   .akay-summary-print-table td:nth-child(2) { text-align: center; }
   p, li, td, th { font-size: 10pt !important; }

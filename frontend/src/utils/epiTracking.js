@@ -9,7 +9,6 @@ import {
 import { applicableInfantScheduleLabels } from "./epiApplicability.js";
 
 export const REQUIRED_EPI_ITEMS = [
-  { code: "NEWBORN_SCREENING", label: "Newborn Screening" },
   // Children Protected At Birth (Form 10) - confirmed missing per the Forms
   // Finalization Checklist.
   { code: "CPAB", label: "CPAB" },

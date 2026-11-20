@@ -52,10 +52,12 @@ export function buildTaskActions(task, handlers = {}) {
       task.effectiveState,
     )
   ) {
-    actions.push({
-      label: "Record Visit",
-      onClick: handlers.onRecordVisit,
-    });
+    if (handlers.basePath !== "/rhu") {
+      actions.push({
+        label: "Record Visit",
+        onClick: handlers.onRecordVisit,
+      });
+    }
     actions.push({
       label: "Reschedule",
       onClick: handlers.onReschedule,

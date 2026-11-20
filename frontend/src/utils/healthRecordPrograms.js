@@ -6,7 +6,6 @@ import { isTbRecord } from "./tbRecords.js";
 export { isTbRecord };
 
 export const EPI_VACCINE_ROWS = [
-  "Newborn Screening",
   "CPAB",
   "BCG",
   "HEPA B",
@@ -466,6 +465,10 @@ export function getImmunizationData(record = {}) {
   return record.immunizationData || record.immunization_data || {};
 }
 
+export function isNewbornScreening(label) {
+  return /^(?:newborn[\s_-]*screening|nbs)$/i.test(String(label ?? "").trim());
+}
+
 export function normalizeVaccineName(value = "") {
   return String(value || "")
     .trim()
@@ -507,8 +510,7 @@ export function getEpiVaccineEntries(record = {}) {
     }))
     .filter((entry) => String(entry.vaccineName || "").trim());
 
-  EPI_VACCINE_ROWS.forEach((vaccineName) => {
-    const legacyFields = LEGACY_EPI_FIELD_MAP[vaccineName] || [];
+  Object.entries(LEGACY_EPI_FIELD_MAP).forEach(([vaccineName, legacyFields]) => {
     const hasLegacyValue = legacyFields.some((field) => data[field] === true);
     if (!hasLegacyValue) return;
 

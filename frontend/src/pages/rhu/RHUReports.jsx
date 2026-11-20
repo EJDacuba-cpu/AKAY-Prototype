@@ -284,19 +284,13 @@ export default function RHUReports() {
                             <tr className="h-11 border-b border-neutral-200 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
                               <th className="px-3">Indicator</th>
                               <th className="px-3 text-right">Count</th>
-                              {category === "epi" || category === "maternal" ? null : (
-                                <th className="px-3">Notes</th>
-                              )}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-neutral-100">
                             {report.summary.map((row, index) => (
-                              <tr key={`${row.label}-${row.note || ""}-${index}`} className="h-14 hover:bg-neutral-50">
+                              <tr key={`${row.label}-${index}`} className="h-14 hover:bg-neutral-50">
                                 <td className="px-3 text-sm font-semibold text-ink-800">{row.label}</td>
                                 <td className="px-3 text-right tabular-nums text-ink-800">{row.value}</td>
-                                {category === "epi" || category === "maternal" ? null : (
-                                  <td className="truncate px-3 text-[11px] text-neutral-600" title={row.note || undefined}>{row.note}</td>
-                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -354,9 +348,7 @@ export default function RHUReports() {
             categoryLabel={isNutrition ? "Nutrition Report" : report.categoryLabel}
             cards={report.cards}
             summary={report.summary}
-            notes={report.notes}
             ageGroup={isNutrition ? ageGroup : ""}
-            hideNotes={category === "epi" || category === "maternal"}
           />
         </div>
       </PageStateWrapper>
@@ -372,9 +364,7 @@ export function PrintReport({
   categoryLabel,
   cards,
   summary,
-  notes = [],
   ageGroup = "",
-  hideNotes = false,
 }) {
   return (
     <section id="rhu-report-print" data-print-state={printState} data-print-key={printKey} className="print-only">
@@ -387,31 +377,18 @@ export function PrintReport({
       <p className="mt-1 text-[11px] text-neutral-500">
         Generated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
       </p>
-      {notes.length ? (
-        <ul className="mt-3 list-disc pl-4 text-[11px] text-neutral-600">
-          {notes.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      ) : null}
       <table className="akay-summary-print-table mt-4 w-full text-left text-[12px]">
         <thead>
           <tr>
             <th className="border-b border-neutral-300 py-1.5">Indicator</th>
             <th className="border-b border-neutral-300 py-1.5 text-right">Count</th>
-            {hideNotes ? null : (
-              <th className="border-b border-neutral-300 py-1.5">Notes</th>
-            )}
           </tr>
         </thead>
         <tbody>
           {(summary.length ? summary : cards).map((row, index) => (
-            <tr key={`${row.label}-${row.note || row.hint}-${index}`}>
+            <tr key={`${row.label}-${index}`}>
               <td className="border-b border-neutral-200 py-1.5">{row.label}</td>
               <td className="border-b border-neutral-200 py-1.5 text-right tabular-nums">{row.value}</td>
-              {hideNotes ? null : (
-                <td className="border-b border-neutral-200 py-1.5">{row.note || row.hint}</td>
-              )}
             </tr>
           ))}
         </tbody>

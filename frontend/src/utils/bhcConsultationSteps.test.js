@@ -267,6 +267,12 @@ test("RHU ITR Interview mounts Family then Past Medical then Social, with no His
   assert.doesNotMatch(workspace, /locked=\{!canViewBackground/);
 });
 
+test("BHC EPI tracking and Assessment & Care Plan read the same dose list", () => {
+  const workspace = readFileSync(new URL("../pages/bhc/ConsultationWorkspace.jsx", import.meta.url), "utf8");
+  assert.match(workspace, /<ImmunizationVisitFields\s+[^>]*?entries=\{immunizationVaccineEntries\}/);
+  assert.match(workspace, /<NextStepsSection\s+[^>]*?vaccineEntries=\{immunizationVaccineEntries\}/);
+});
+
 test("BHC consultation panel wires Nutrition enrollment without a Nutrition form", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const workspace = readFileSync(join(here, "../pages/bhc/ConsultationWorkspace.jsx"), "utf8");

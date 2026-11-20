@@ -1,11 +1,10 @@
 import { getEpiCode, formatEpiDate } from "./epiTracking.js";
-import { normalizeVaccineName } from "./healthRecordPrograms.js";
+import { isNewbornScreening, normalizeVaccineName } from "./healthRecordPrograms.js";
 
 /** Services / indicators that are not infant vaccine doses. */
-export const NON_VACCINE_TRACKING_LABELS = new Set([
-  "NEWBORN SCREENING",
-  "CPAB",
-]);
+export function isNonVaccineLabel(label) {
+  return isNewbornScreening(label) || normalizeVaccineName(label) === "CPAB";
+}
 
 const BIRTH_DOSE_FAMILIES = new Set(["BCG", "HEPA B"]);
 
@@ -60,8 +59,17 @@ export const CPAB_STATUS_OPTIONS = [
 
 export { CPAB_EVIDENCE_SOURCES };
 
-function isNonVaccineLabel(label) {
-  return NON_VACCINE_TRACKING_LABELS.has(normalizeVaccineName(label));
+/** Device drafts may predate the retirement of newborn screening from EPI. */
+export function restoreEpiDraft(data) {
+  const restored = { ...data };
+  const entries = Array.isArray(restored.vaccineEntries) ? restored.vaccineEntries : restored.vaccinesGiven;
+  delete restored.newbornScreening;
+  delete restored.newborn_screening;
+  delete restored.vaccinesGiven;
+  restored.vaccineEntries = Array.isArray(entries) ? entries.filter(entry =>
+    entry && !isNewbornScreening(entry.vaccineName ?? entry.vaccine_name ?? entry.name ?? entry.vaccine ?? entry)
+  ) : [];
+  return restored;
 }
 
 function splitDoseLabel(label) {

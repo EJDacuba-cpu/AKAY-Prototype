@@ -127,6 +127,58 @@ class ConsultationWorkflowRevisionTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
+    public function test_bhc_epi_tracking_saves_the_dose_and_only_the_dispensing_list_moves_stock(): void
+    {
+        $this->patient->update(['birthdate' => now()->subMonth()->toDateString()]);
+        $medicine = Medicine::create(['name' => 'BCG', 'quantity' => 5, 'unit' => 'vials', 'availability_status' => 'Available', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'created_by' => $this->worker->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(), 'available_quantity' => 5, 'quarantined_quantity' => 0]);
+        $dose = ['vaccineName' => 'HEPA B', 'dose' => 'Birth dose', 'dateGiven' => now()->subMonth()->toDateString(), 'timeGiven' => '09:15'];
+        $payload = [
+            'consultation_workflow' => 'bhc_general_v2',
+            'category' => 'Immunization',
+            'treatment_notes' => 'Reviewed immunization history.',
+            'monitoring_data' => ['selectedPrograms' => ['EPI'], 'primaryProgram' => 'EPI'],
+            'immunization_data' => ['vaccineEntries' => [$dose]],
+        ];
+        $this->save($payload)->assertCreated()->assertJsonPath('data.immunization_data.vaccineEntries.0', $dose);
+        $this->assertSame(5, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
+
+        $payload['immunization_data']['vaccineEntries'] = [['vaccineName' => 'BCG', 'dateGiven' => now()->toDateString()]];
+        $payload['dispensed_medicines'] = [['medicine_id' => $medicine->id, 'quantity' => 1, 'confirmed_given' => true]];
+        $key = (string) Str::uuid();
+        $this->save($payload, $key)->assertCreated();
+        $this->save($payload, $key)->assertOk();
+        $this->assertSame(4, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 1);
+    }
+
+    public function test_bhc_epi_draft_restores_clinical_dose_and_separate_dispensing_selection(): void
+    {
+        $medicine = Medicine::create(['name' => 'BCG', 'quantity' => 5, 'unit' => 'vials', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'created_by' => $this->worker->id]);
+        $this->patient->update(['birthdate' => now()->subMonth()->toDateString()]);
+        $dose = ['vaccineName' => 'BCG', 'dose' => 'Birth dose', 'dateGiven' => now()->toDateString(), 'timeGiven' => '09:15'];
+        $draft = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'Immunization',
+            'payload' => [
+                'consultationWorkflow' => 'bhc_general_v2',
+                'selectedPrograms' => ['EPI'],
+                'primaryProgram' => 'EPI',
+                'immunizationData' => ['vaccineEntries' => [$dose]],
+                'dispensedMedicines' => [['medicineId' => $medicine->id, 'quantity' => 1, 'confirmedGiven' => true]],
+            ],
+        ])->assertCreated()->json('data');
+        $this->getJson('/api/health-record-drafts/'.$draft['id'])->assertOk()
+            ->assertJsonPath('data.payload.immunizationData.vaccineEntries.0.vaccineName', 'BCG')
+            ->assertJsonPath('data.payload.immunizationData.vaccineEntries.0.timeGiven', '09:15')
+            ->assertJsonMissingPath('data.payload.immunizationData.vaccineEntries.0.medicineId')
+            ->assertJsonPath('data.payload.dispensedMedicines.0.confirmedGiven', true)
+            ->assertJsonPath('data.medicine_selections.0.medicine_id', $medicine->id);
+        $this->assertSame(5, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
+    }
+
     public function test_finalization_does_not_grant_referral_or_dispensing_permission(): void
     {
         $this->worker->update(['permissions' => ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize']]);

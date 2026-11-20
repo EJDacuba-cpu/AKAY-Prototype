@@ -34,6 +34,7 @@ import {
   ConsultationWorkspaceBody,
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
+import { restoreEpiDraft } from "../../utils/epiVaccineCatalog";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import RhuDiagnosisCarePlanSection from "../../components/features/health-records/wizard/RhuDiagnosisCarePlanSection";
 import TbTreatmentCardForm, {
@@ -145,7 +146,7 @@ import {
   applyEstablishedTbDiseaseAssessment,
   establishedTbDiseaseLock,
 } from "../../utils/establishedTbDisease";
-import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
+import { excludePriorReportSelections, focusedRhuFollowUps, reportedFollowUpDiagnosisIds } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import {
   applyServiceHandoff,
@@ -314,7 +315,7 @@ export default function RhuConsultationWorkspace() {
   const [maternalTtTdEvidence, setMaternalTtTdEvidence] = useState([]);
   const [immunizationBreastfeeding, setImmunizationBreastfeeding] = useState({});
   const [immunizationRemarks, setImmunizationRemarks] = useState("");
-  const [diagnoses, setDiagnoses] = useState([]);
+  const [draftDiagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
   const [legacyAssessmentNotes, setLegacyAssessmentNotes] = useState("");
   const [legacyDiagnosisText, setLegacyDiagnosisText] = useState("");
@@ -391,20 +392,28 @@ export default function RhuConsultationWorkspace() {
     visit?.date,
     visit?.created_at,
   );
+  const selectedFollowUps = useMemo(() => linkedFollowUps.filter((task) =>
+    String(task.patientId) === String(patientId) && linkedFollowUpTaskIds.some((id) => Number(id) === Number(task.id))
+  ), [linkedFollowUps, linkedFollowUpTaskIds, patientId]);
+  const reportedDiagnosisIds = useMemo(
+    () => reportedFollowUpDiagnosisIds(selectedFollowUps, patientRecords),
+    [selectedFollowUps, patientRecords],
+  );
+  const diagnoses = useMemo(
+    () => excludePriorReportSelections(draftDiagnoses, reportedDiagnosisIds),
+    [draftDiagnoses, reportedDiagnosisIds],
+  );
   const continuedPrograms = useMemo(() => {
-    const selectedTasks = linkedFollowUps
-      .filter((task) => String(task.patientId) === String(patientId) &&
-        linkedFollowUpTaskIds.some((id) => Number(id) === Number(task.id)))
-      .map((task) => {
-        const source = patientRecords.find((record) => String(record.id) === String(task.healthRecordId))
-          || task.healthRecord;
-        return {
-          purposeKey: task.purposeKey,
-          sourceSelectedPrograms: getConsultationPrograms(source),
-        };
-      });
+    const selectedTasks = selectedFollowUps.map((task) => {
+      const source = patientRecords.find((record) => String(record.id) === String(task.healthRecordId))
+        || task.healthRecord;
+      return {
+        purposeKey: task.purposeKey,
+        sourceSelectedPrograms: getConsultationPrograms(source),
+      };
+    });
     return getContinuedServicePrograms(selectedTasks, patient, rhuVisitDate);
-  }, [linkedFollowUps, linkedFollowUpTaskIds, patientId, patientRecords, patient, rhuVisitDate]);
+  }, [selectedFollowUps, patientRecords, patient, rhuVisitDate]);
   const selectedPrograms = useMemo(
     () => continuedPrograms.length ? [...new Set([...savedPrograms, ...continuedPrograms])] : savedPrograms,
     [continuedPrograms, savedPrograms],
@@ -914,7 +923,7 @@ export default function RhuConsultationWorkspace() {
       ),
     });
     setFamilyPlanningData({ clientType: "", previousMethod: "", methodUsed: "", actionTaken: "", ...payload.familyPlanningData });
-    setImmunizationEntries(payload.immunizationData?.vaccineEntries || []);
+    setImmunizationEntries(restoreEpiDraft(payload.immunizationData).vaccineEntries);
     setImmunizationBreastfeeding(payload.immunizationData?.breastfeedingMonitoring || {});
     setImmunizationRemarks(payload.consultationNotes || "");
     setCpabAssessment({ status: "not_assessed", notes: "", ...payload.immunizationData?.cpabAssessment });
@@ -1407,7 +1416,6 @@ export default function RhuConsultationWorkspace() {
       return;
     }
     const isWalkIn = visit?.source === "walk_in";
-    const savedDiagnoses = diagnosesForRhuSave(diagnoses);
     setSaving(true);
     try {
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -1441,6 +1449,9 @@ export default function RhuConsultationWorkspace() {
       if (linkedFollowUpTaskIds.length && !resolvedParentHealthRecordId) {
         throw new Error("This follow-up visit is missing its parent consultation link. Reopen the pending follow-up from Today's Queue and try again.");
       }
+      const savedDiagnoses = diagnosesForRhuSave(excludePriorReportSelections(
+        diagnoses, reportedFollowUpDiagnosisIds(continuedTasks, patientRecords),
+      ));
       const completedPreviousMethod = familyPlanningData.previousMethod ||
         (linkedFollowUpTaskIds.length ? getInitialVisitFpMethod(patientRecords, resolvedParentHealthRecordId) : "");
       const scheduledReturns = attachPredecessors(
@@ -2106,23 +2117,6 @@ export default function RhuConsultationWorkspace() {
                         [monthKey]: checked,
                       }));
                     }}
-                    onToggleVaccine={(name, checked) => {
-                      const visitDay = String(
-                        visit?.consultationDate || visit?.date || "",
-                      ).slice(0, 10);
-                      setImmunizationEntries((current) =>
-                        checked
-                          ? [
-                              ...current,
-                              {
-                                vaccineName: name,
-                                dateGiven: visitDay,
-                                timeGiven: "",
-                              },
-                            ]
-                          : current.filter((entry) => entry.vaccineName !== name),
-                      );
-                    }}
                     onAddVaccineEntry={(entry) => {
                       setImmunizationEntries((current) => [...current, entry]);
                     }}
@@ -2224,6 +2218,7 @@ export default function RhuConsultationWorkspace() {
               {currentStepKey === NEXT_STEP && (
                 <fieldset disabled={clinicalLocked} className="min-w-0">
                   <RhuDiagnosisCarePlanSection
+                    reportedDiagnosisIds={reportedDiagnosisIds}
                     laboratoryOptions={evidenceOptions(laboratoryTests, laboratoryHistory.data || [])}
                     laboratoryLoading={laboratoryHistory.isFetching}
                     laboratoryError={laboratoryHistory.isError}
