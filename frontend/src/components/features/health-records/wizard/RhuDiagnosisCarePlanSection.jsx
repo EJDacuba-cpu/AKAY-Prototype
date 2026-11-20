@@ -277,7 +277,7 @@ function FollowUpConditionReferences({ references = [] }) {
 function DiagnosisCard({
   laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
   onUpdateCurrentLaboratoryTest, canUpdateHistoricalLaboratory = false,
-  entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
+  entry, alreadyReported, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
   registry, existingTbCase, canConfirmTb, establishedLock = null,
   onChange, onFollowUpChange, onRemove,
   prescriptions = [], diagnoses = [], onPrescriptionsChange, removalError = "",
@@ -338,7 +338,7 @@ function DiagnosisCard({
         </span>
       </label>
       <FieldError error={errors[`${key}.activate`]} />
-      <fieldset className="border-t border-[#E5EEFF] pt-2" disabled={disabled}>
+      {!alreadyReported && <fieldset className="border-t border-[#E5EEFF] pt-2" disabled={disabled}>
         <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">
           Reporting Classification (check all applicable)
         </legend>
@@ -369,7 +369,7 @@ function DiagnosisCard({
           ))}
         </div>
         <FieldError error={errors[`${key}.reportIn`]} />
-      </fieldset>
+      </fieldset>}
       <div className="rhu-diagnosis-evidence">
         <div className="rhu-diagnosis-assessment">
           <TbCaseManagementSection
@@ -558,6 +558,7 @@ export default function RhuDiagnosisCarePlanSection({
   onUpdateCurrentLaboratoryTest,
   canUpdateHistoricalLaboratory = false,
   diagnoses = [],
+  reportedDiagnosisIds,
   diagnosisDraft = "",
   onDiagnosisDraftChange,
   onAddDiagnosis,
@@ -697,6 +698,7 @@ export default function RhuDiagnosisCarePlanSection({
               canUpdateHistoricalLaboratory={canUpdateHistoricalLaboratory}
               key={entry.id}
               entry={entry}
+              alreadyReported={reportedDiagnosisIds?.has(entry.id)}
               schedules={schedules}
               errors={errors}
               disabled={disabled}

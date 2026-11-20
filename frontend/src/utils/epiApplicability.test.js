@@ -13,11 +13,14 @@ function onDate(iso) {
   return new Date(`${iso}T12:00:00`);
 }
 
-test("a newborn is offered BCG, HEPA B, Newborn Screening, and CPAB, not 6-week antigens or HPV", () => {
+test("a newborn is offered BCG, HEPA B and CPAB; prior screening cannot reintroduce a retired option", () => {
   const visit = onDate("2026-01-01");
   assert.equal(isEpiItemAgeApplicable("BCG", DOB, visit), true);
   assert.equal(isEpiItemAgeApplicable("HEPA B", DOB, visit), true);
-  assert.equal(isEpiItemAgeApplicable("Newborn Screening", DOB, visit), true);
+  assert.equal(isEpiItemAgeApplicable("Newborn Screening", DOB, visit), false);
+  assert.deepEqual(visibleEpiVaccineOptions(["Newborn Screening", "BCG"], {
+    birthDate: DOB, visitDate: visit, historyLabels: ["Newborn Screening"],
+  }), ["BCG"]);
   assert.equal(isEpiItemAgeApplicable("CPAB", DOB, visit), true);
   assert.equal(isEpiItemAgeApplicable("OPV 1", DOB, visit), false);
   assert.equal(isEpiItemAgeApplicable("PENTA 1", DOB, visit), false);

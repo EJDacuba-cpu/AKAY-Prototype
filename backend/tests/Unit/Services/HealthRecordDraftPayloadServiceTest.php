@@ -20,6 +20,26 @@ use Tests\TestCase;
  */
 class HealthRecordDraftPayloadServiceTest extends TestCase
 {
+    public function test_newborn_screening_is_removed_from_epi_drafts_on_read_and_write(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $dose = ['vaccineName' => 'BCG', 'dose' => 'Birth dose', 'timeGiven' => '10:15'];
+        foreach (['bhc_general_v2', 'rhu_itr_v1'] as $workflow) {
+            foreach (['vaccineEntries', 'vaccinesGiven'] as $key) {
+                $payload = ['consultationWorkflow' => $workflow, 'immunizationData' => [
+                    'newborn_screening' => true,
+                    $key => [['vaccineName' => 'Newborn Screening'], $dose],
+                    'cpabAssessment' => ['status' => 'protected'],
+                ]];
+                $restored = $service->sanitizeStored($payload);
+                $this->assertSame([$dose], $restored['immunizationData']['vaccineEntries']);
+                $this->assertArrayNotHasKey('newborn_screening', $restored['immunizationData']);
+                $this->assertSame(['status' => 'protected'], $restored['immunizationData']['cpabAssessment']);
+                $this->assertSame($restored, $service->sanitize($payload));
+            }
+        }
+    }
+
     public function test_incomplete_prescription_editor_survives_save_and_recovery(): void
     {
         $payload = [

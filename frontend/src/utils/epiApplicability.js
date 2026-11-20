@@ -1,19 +1,19 @@
 import { EPI_INFANT_SCHEDULE } from "./careTrackingConfig.js";
-import { calculateAgeInMonths, isInfantPatient } from "./patientUtils.js";
+import { calculateAgeInMonths } from "./patientUtils.js";
+import { isNewbornScreening } from "./healthRecordPrograms.js";
 
 /**
  * Minimum ages for offering a NEW dose of each stored EPI row.
  *
  * Days are used for the 6-week antigens. Completed months/years match the
  * existing infant helper. Catch-up stays visible after the routine target age
- * unless `newDoseUntilMonths` or `infantOnly` closes the window.
+ * unless `newDoseUntilMonths` closes the window.
  *
  * Clinical flags (do not auto-validate here): HepB is a single AKAY row, not a
  * 3-dose series; BCG after 2 months may need TST; BCG after 12 months is not
  * newly offered.
  */
 const EPI_AGE_RULES = {
-  "Newborn Screening": { infantOnly: true },
   CPAB: { minDays: 0 },
   BCG: { minDays: 0, newDoseUntilMonths: 12 },
   "HEPA B": { minDays: 0, newDoseUntilMonths: 12 },
@@ -58,10 +58,9 @@ function completedYears(dob, visit) {
 export function isEpiItemAgeApplicable(label, birthDate, visitDate) {
   const dob = parseCalendarDate(birthDate);
   const visit = parseCalendarDate(visitDate);
-  if (!dob || !visit || visit < dob) return false;
+  if (!dob || !visit || visit < dob || isNewbornScreening(label)) return false;
   const rule = EPI_AGE_RULES[label];
   if (!rule) return true;
-  if (rule.infantOnly && !isInfantPatient(dob, visit)) return false;
   if (rule.minDays != null) {
     const min = new Date(dob.getFullYear(), dob.getMonth(), dob.getDate() + rule.minDays);
     if (visit < min) return false;
@@ -84,5 +83,5 @@ export function applicableInfantScheduleLabels(birthDate, visitDate) {
 
 export function visibleEpiVaccineOptions(allOptions = [], { birthDate, visitDate, historyLabels = [] } = {}) {
   const recorded = new Set(historyLabels.filter(Boolean));
-  return allOptions.filter((label) => recorded.has(label) || isEpiItemAgeApplicable(label, birthDate, visitDate));
+  return allOptions.filter((label) => !isNewbornScreening(label) && (recorded.has(label) || isEpiItemAgeApplicable(label, birthDate, visitDate)));
 }

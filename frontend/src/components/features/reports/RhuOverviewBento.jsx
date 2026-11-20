@@ -96,15 +96,13 @@ export default function RhuOverviewBento({ report, periodLabel, className }) {
                   <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                     <th className="px-3 py-2.5">Indicator</th>
                     <th className="px-3 py-2.5 text-right">Count</th>
-                    <th className="px-3 py-2.5">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.summary.map((row, index) => (
-                    <tr key={`${row.label}-${row.note}-${index}`} className="border-b border-neutral-100">
+                    <tr key={`${row.label}-${index}`} className="border-b border-neutral-100">
                       <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
-                      <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
                     </tr>
                   ))}
                 </tbody>

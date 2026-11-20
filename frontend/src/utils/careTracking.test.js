@@ -216,7 +216,7 @@ test("EPI counts only the configured infant schedule toward X of Y, extras becom
   assert.equal(epi.status, "In progress");
   assert.ok(epi.facts[0].value.startsWith(`1 of ${EPI_INFANT_SCHEDULE.length}`));
   assert.ok(epi.flags.some((f) => f.label === "HPV"));
-  assert.ok(epi.flags.some((f) => f.label === "Newborn Screening"));
+  assert.ok(!epi.flags.some((f) => f.label === "Newborn Screening"));
 });
 
 test("EPI reads Fully Immunized when the schedule completes before the FIC age limit", () => {

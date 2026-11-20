@@ -1,7 +1,7 @@
 import PreviousMethodSelect from "../../components/features/health-records/PreviousMethodSelect";
 import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
-import MedicineAllocationFields from "../../components/features/medicine/MedicineAllocationFields";
-import { allocationIntent, validateDispenseQuantity, validateDispenseItems } from "../../utils/medicineExpiryGroups";
+import { restoreBhcDispensingDraft, clinicalVaccineEntries } from "../../utils/bhcEpiDraft";
+import { allocationIntent, validateDispenseItems } from "../../utils/medicineExpiryGroups";
 import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
 import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
@@ -292,6 +292,7 @@ import {
 import { consultationPatientQueryKey, getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { isConnectionError } from "../../services/apiClient";
 import { getCurrentUser } from "../../utils/auth";
+import { restoreEpiDraft } from "../../utils/epiVaccineCatalog";
 import { visibleEpiVaccineOptions } from "../../utils/epiApplicability";
 import {
   compileEpiHistory,
@@ -482,7 +483,6 @@ const EMPTY_IMMUNIZATION_DATA = {
 };
 
 const CHILD_VACCINE_OPTIONS = [
-  "Newborn Screening",
   "CPAB",
   "BCG",
   "HEPA B",
@@ -1589,7 +1589,6 @@ export default function ConsultationWorkspace() {
           pickDraftFields(entry, [
             "vaccineName",
             "customVaccineName",
-            "medicineId", "inventoryQuantity", "confirmedGiven", "allocations", "override_reason", "overrideReason",
             "dose",
             "dateGiven",
             "timeGiven",
@@ -1884,11 +1883,14 @@ export default function ConsultationWorkspace() {
       aog: payload.aog || "",
       visitDate: resolvePregnancyVisitDate(payload.dateOfVisit, toDateInputValue()),
     });
+    const restoredEpi = restoreEpiDraft(payload.immunizationData);
+    const savedVaccineEntries = getVaccineEntries(restoredEpi);
+    const restoredVaccineEntries = clinicalVaccineEntries(savedVaccineEntries);
     setImmunizationData({
       ...EMPTY_IMMUNIZATION_DATA,
-      ...(payload.immunizationData || {}),
-      vaccineEntries: payload.immunizationData?.vaccineEntries || [],
-      vaccinesGiven: payload.immunizationData?.vaccineEntries || [],
+      ...restoredEpi,
+      vaccineEntries: restoredVaccineEntries,
+      vaccinesGiven: restoredVaccineEntries,
       breastfeedingMonitoring: {
         ...EMPTY_IMMUNIZATION_DATA.breastfeedingMonitoring,
         ...(payload.immunizationData?.breastfeedingMonitoring || {}),
@@ -1950,24 +1952,13 @@ export default function ConsultationWorkspace() {
       });
     }
 
-    const warnings = [];
-    setDispensedMedicines(
-      (draft.medicineSelections || []).map((selection) => {
-        if (selection.warning) warnings.push(selection.warning);
-        const medicine = selection.medicine;
-        return {
-          ...allocationIntent(payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id)) || selection),
-          medicineId: String(selection.medicine_id),
-          confirmedGiven: payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id))?.confirmedGiven === true,
-          medicineName: medicine?.name || "Unavailable medicine",
-          category: medicine?.category || "Unavailable",
-          availableStock: medicine?.quantity ?? 0,
-          quantity: selection.quantity,
-          unit: medicine?.unit || "",
-          remarks: selection.remarks || "",
-        };
-      }),
-    );
+    const { medicines, warnings } = restoreBhcDispensingDraft({
+      payload,
+      medicineSelections: draft.medicineSelections,
+      vaccineEntries: savedVaccineEntries,
+      inventory: bhcMedicineInventory,
+    });
+    setDispensedMedicines(medicines);
     setDraftMedicineWarnings(Array.from(new Set(warnings)));
     // A recovered on-device copy may never have reached the server, in which
     // case there is no draft to update yet - autosave must create one.
@@ -2545,11 +2536,7 @@ export default function ConsultationWorkspace() {
     // Review is asked again - revealErrorStep goes back to step 3.
     Object.assign(errors, getNextStepErrors());
 
-    const stockItems = [
-      ...dispensedMedicines.filter(item => item.confirmedGiven),
-      ...(isImmunization ? immunizationVaccineEntries.filter(entry => entry.confirmedGiven).map(entry => ({ ...entry, quantity: entry.inventoryQuantity })) : []),
-    ];
-    const stockError = validateDispenseItems(stockItems, bhcMedicineInventory);
+    const stockError = validateDispenseItems(dispensedMedicines.filter(item => item.confirmedGiven), bhcMedicineInventory);
     if (stockError) errors.dispensedMedicines = stockError;
 
     if (hasPendingDispensedMedicineDraft) {
@@ -2654,44 +2641,6 @@ export default function ConsultationWorkspace() {
         [monthKey]: value,
       },
     }));
-  }
-
-  function updateVaccineInventory(index, field, value) {
-    setImmunizationData(current => {
-      const entries = getVaccineEntries(current).map((entry, i) => {
-        if (i !== index) return entry;
-        const next = { ...entry, [field]: value };
-        if (field === "medicineId") { delete next.allocations; delete next.override_reason; delete next.overrideReason; }
-        return next;
-      });
-      return { ...current, vaccineEntries: entries, vaccinesGiven: entries };
-    });
-  }
-
-  function handleVaccineToggle(vaccineName, checked) {
-    const vaccineCode = getEpiCode(vaccineName);
-    if (vaccineCode && epiCompletion.alreadyGivenCodes.has(vaccineCode)) return;
-
-    clearValidationError("vaccineEntries");
-    setImmunizationData((prev) => {
-      const existingEntries = getVaccineEntries(prev);
-      const entries = checked
-        ? [
-            ...existingEntries,
-            {
-              ...EMPTY_VACCINE_ENTRY,
-              vaccineName,
-              dateGiven: dateOfVisit,
-              timeGiven: "",
-            },
-          ]
-        : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
-      return {
-        ...prev,
-        vaccineEntries: entries,
-        vaccinesGiven: entries,
-      };
-    });
   }
 
   function handleAddVaccineEntry(entry) {
@@ -3100,7 +3049,7 @@ export default function ConsultationWorkspace() {
     await refreshRhuMedicines();
     const dispensedMedicineIds = Array.from(
       new Set(
-        [...dispensedMedicines, ...getVaccineEntries(immunizationData)]
+        dispensedMedicines
           .map((item) => String(item?.medicineId || item?.medicine_id || ""))
           .filter(Boolean),
       ),
@@ -3271,7 +3220,7 @@ export default function ConsultationWorkspace() {
     if (revealErrorStep(clientErrors)) return;
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
-    const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
+    const preparedVaccineEntries = clinicalVaccineEntries(immunizationVaccineEntries).map((entry) => ({
       ...entry,
       vaccineName:
         entry.vaccineName === "Other"
@@ -4275,7 +4224,9 @@ export default function ConsultationWorkspace() {
         <div>
           <p className={TREATMENT_LABEL_CLASS}>Medicines / Supplies Dispensed</p>
           <p className="mb-2 text-xs text-[#6B7280]">
-            Optional medicines or supplies given from BHC inventory during this visit.
+            {isImmunization
+              ? "Record any vaccines, medicines, or supplies given from BHC stock here. Adding a dose in EPI Vaccine Tracking does not deduct stock."
+              : "Optional medicines or supplies given from BHC inventory during this visit."}
           </p>
           <DispensedMedicinesSection
             inventory={bhcMedicineInventory}
@@ -4302,6 +4253,8 @@ export default function ConsultationWorkspace() {
     <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
     <NextStepsSection
       selectedPrograms={selectedPrograms}
+      vaccineEntries={immunizationVaccineEntries}
+      dispenseVaccinesAtVisit
       followUpSchedules={followUpSchedules}
       serviceReferrals={namedServiceReferrals}
       onServiceNextAction={handleServiceNextAction}
@@ -4904,81 +4857,6 @@ export default function ConsultationWorkspace() {
         {/* Each EPI section owns its card, matching the other consultation steps. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up space-y-4" style={stagger(2)}>
-            {(() => {
-              // BHC-only stock deduction: NBS/CPAB stay on the tracking list,
-              // inventory rows are for actual vaccine doses only. RHU EPI has
-              // no inventory block here (prescriptions are separate).
-              const inventoryEntries = immunizationVaccineEntries
-                .map((entry, index) => ({ entry, index }))
-                .filter(({ entry }) => {
-                  const name = String(entry?.vaccineName || "").trim().toLowerCase();
-                  return name && name !== "newborn screening" && name !== "cpab";
-                });
-              if (inventoryEntries.length === 0) return null;
-              return (
-              <ClinicalSectionCard
-                title="Vaccine Administration — Inventory"
-                subtitle="Match each dose to a stock item and quantity. Keep these out of Medicines / Supplies."
-              >
-                <div className="space-y-3">
-                  {inventoryEntries.map(({ entry, index }) => (
-                    <fieldset
-                      key={`${entry.vaccineName}-${index}`}
-                      disabled={!(currentUser?.permissions || []).includes("items.dispense")}
-                      className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"
-                    >
-                      <legend className="text-sm font-medium">{entry.vaccineName}</legend>
-                      <select
-                        aria-label={entry.vaccineName + " inventory item"}
-                        className="rounded-none border border-gray-200 p-2"
-                        value={entry.medicineId || ""}
-                        onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}
-                      >
-                        <option value="">Select inventory item</option>
-                        {bhcMedicineInventory.map(item => (
-                          <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
-                        ))}
-                      </select>
-                      <input
-                        aria-label={entry.vaccineName + " inventory quantity"}
-                        className="rounded-none border border-gray-200 p-2"
-                        type="number"
-                        min="1"
-                        step="1"
-                        placeholder="Stock-unit quantity"
-                        value={entry.inventoryQuantity || ""}
-                        onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)}
-                      />
-                      {entry.medicineId && validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity) && (
-                        <p role="alert" className="text-xs text-alert-700">{validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity)}</p>
-                      )}
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={entry.confirmedGiven === true}
-                          disabled={!entry.confirmedGiven && Boolean(validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity))}
-                          onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)}
-                        />
-                        Confirmed Administered
-                      </label>
-                      <div className="@xl:col-span-3">
-                        <MedicineAllocationFields
-                          medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))}
-                          quantity={entry.inventoryQuantity}
-                          value={entry}
-                          disabled={!(currentUser?.permissions || []).includes("items.dispense")}
-                          onChange={next => {
-                            updateVaccineInventory(index, "allocations", next.allocations);
-                            updateVaccineInventory(index, "override_reason", next.override_reason);
-                          }}
-                        />
-                      </div>
-                    </fieldset>
-                  ))}
-                </div>
-              </ClinicalSectionCard>
-              );
-            })()}
             <ImmunizationVisitFields
               vaccineOptions={epiVaccineOptions}
               birthDate={patientBirthDate}
@@ -5004,7 +4882,6 @@ export default function ConsultationWorkspace() {
               onWeightChange={setWeight}
               onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
-              onToggleVaccine={handleVaccineToggle}
               onAddVaccineEntry={handleAddVaccineEntry}
               onRemoveVaccineEntry={handleRemoveVaccineEntry}
               onVaccineFieldChange={handleVaccineFieldChange}

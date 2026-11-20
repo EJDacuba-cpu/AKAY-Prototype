@@ -3,8 +3,21 @@ import test from "node:test";
 
 import {
   buildVaccineDoseCatalog,
+  restoreEpiDraft,
   vaccineEntryConflicts,
 } from "./epiVaccineCatalog.js";
+
+test("resuming BHC and RHU EPI drafts removes screening and preserves other entries", () => {
+  const dose = { vaccineName: "BCG", dose: "Birth dose", timeGiven: "10:15" };
+  const cpabAssessment = { status: "protected", notes: "Recorded" };
+  for (const key of ["vaccineEntries", "vaccinesGiven"]) {
+    const draft = { [key]: [{ vaccineName: "Newborn Screening" }, dose], newborn_screening: true, cpabAssessment };
+    const restored = restoreEpiDraft(draft);
+    assert.deepEqual(restored, { vaccineEntries: [dose], cpabAssessment });
+    assert.deepEqual(restoreEpiDraft(restored), restored);
+  }
+  assert.deepEqual(restoreEpiDraft({ vaccineEntries: [{ vaccineName: "NBS" }] }).vaccineEntries, []);
+});
 
 test("BHC dose-labeled options group into Vaccine → Dose with preserved stored labels", () => {
   const catalog = buildVaccineDoseCatalog([

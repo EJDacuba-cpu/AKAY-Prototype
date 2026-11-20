@@ -405,6 +405,7 @@ export default function NextStepsSection({
   onPrescriptionEditorChange,
   showServicePrescriptions = false,
   vaccineEntries = [],
+  dispenseVaccinesAtVisit = false,
   serviceUsages = [],
   onServiceUsagesChange,
   legacyServicePrescriptionReviewed = false,
@@ -510,6 +511,7 @@ export default function NextStepsSection({
         <ServiceItemsUsedSection
           selectedPrograms={selectedPrograms}
           vaccineEntries={vaccineEntries}
+          dispenseVaccinesAtVisit={dispenseVaccinesAtVisit}
           serviceUsages={serviceUsages}
           onServiceUsagesChange={onServiceUsagesChange}
           errors={errors}

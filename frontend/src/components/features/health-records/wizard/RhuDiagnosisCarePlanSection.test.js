@@ -70,6 +70,18 @@ test("each diagnosis exposes independent morbidity notifiable and surveillance c
   assert.match(html, />Community Surveillance</);
 });
 
+test("an RHU follow-up hides the three report choices only for its previously reported diagnosis", () => {
+  const panel = document.createElement("div");
+  panel.innerHTML = render(tb, {
+    diagnoses: [tb, { id: "dm", name: "Diabetes", continued: true }, { id: "new", name: "Asthma" }],
+    reportedDiagnosisIds: new Set(["tb"]),
+  });
+  assert.equal(panel.querySelectorAll('[name="diagnoses.tb.reportIn"]').length, 0);
+  assert.equal(panel.querySelectorAll('[name="diagnoses.dm.reportIn"]').length, 3);
+  assert.equal(panel.querySelectorAll('[name="diagnoses.new.reportIn"]').length, 3);
+  assert.ok(panel.querySelector('[name="diagnoses.tb.nextAction"]'));
+});
+
 test("TB assessment remains while Treatment Decision and its disposition fields are removed", () => {
   const html = render();
   assert.match(html, /Physician TB Assessment/);

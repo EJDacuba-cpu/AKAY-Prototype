@@ -39,7 +39,7 @@ test("EPI panel shows given vs pending doses and scheduled next visit", () => {
     facts: [{ label: "Doses", value: `2 of ${EPI_INFANT_SCHEDULE.length} applicable doses recorded`, type: "text" }],
     lastVisit: "2026-01-01",
     nextVisit: "2026-02-14",
-    flags: [{ label: "Newborn Screening", tone: "neutral" }],
+    flags: [{ label: "CPAB", tone: "neutral" }],
     records: [{ id: 11, dateOfVisit: "2026-01-01" }],
     doseProgress: EPI_INFANT_SCHEDULE.map((name, index) => ({
       name,
@@ -54,7 +54,7 @@ test("EPI panel shows given vs pending doses and scheduled next visit", () => {
   assert.match(html, /BCG/);
   assert.match(html, /Pending/);
   assert.match(html, /Next visit/);
-  assert.match(html, /Newborn Screening/);
+  assert.match(html, /CPAB/);
   assert.doesNotMatch(html, /<input\b/i);
   assert.doesNotMatch(html, /dose calendar|adherence/i);
 });

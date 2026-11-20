@@ -639,8 +639,6 @@ function buildEpiEntry(patient, records, { followUpTasks = [] } = {}) {
   const hasHistory = epiRecords.length > 0;
   if (!applicable && !hasHistory) return null;
 
-  // EPI_EXTRA_INDICATORS keeps its display casing ("Newborn Screening"), but
-  // normalizeVaccineName always upper-cases - normalize both sides to match.
   const extraIndicatorsByNormalizedName = new Map(
     EPI_EXTRA_INDICATORS.map((name) => [normalizeVaccineName(name), name]),
   );

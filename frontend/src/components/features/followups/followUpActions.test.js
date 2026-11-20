@@ -48,13 +48,13 @@ const handlers = {
   onViewRecord() {},
 };
 
-test("active follow-ups offer record, reschedule and cancel only", () => {
-  for (const basePath of ["/bhc", "/rhu"]) {
-    const labels = buildTaskActions(pending, { ...handlers, basePath }).map(
-      (action) => action.label,
-    );
-    assert.deepEqual(labels, ["Record Visit", "Reschedule", "Cancel Follow-up"]);
-    assert.ok(!labels.includes("View Follow-up Details"));
+test("only BHC offers Record Visit for active follow-ups", () => {
+  for (const effectiveState of ["due_today", "no_show", "upcoming", "rescheduled"]) {
+    const task = { ...pending, effectiveState };
+    const bhc = buildTaskActions(task, { ...handlers, basePath: "/bhc" });
+    const rhu = buildTaskActions(task, { ...handlers, basePath: "/rhu" });
+    assert.deepEqual(bhc.map(action => action.label), ["Record Visit", "Reschedule", "Cancel Follow-up"]);
+    assert.deepEqual(rhu.map(action => action.label), ["Reschedule", "Cancel Follow-up"]);
   }
 });
 

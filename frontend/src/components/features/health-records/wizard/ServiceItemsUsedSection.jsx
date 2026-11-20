@@ -20,6 +20,7 @@ const PROGRAM_LABELS = {
 export default function ServiceItemsUsedSection({
   selectedPrograms = [],
   vaccineEntries = [],
+  dispenseVaccinesAtVisit = false,
   serviceUsages = [],
   onServiceUsagesChange,
   errors = {},
@@ -65,8 +66,9 @@ export default function ServiceItemsUsedSection({
           Service items used
         </h3>
         <p className="mt-1 text-xs text-[#6B7280]">
-          Items already administered or used during this visit. Inventory staff
-          reconcile stock later in To Dispense — nothing is deducted here.
+          {dispenseVaccinesAtVisit && epiSelected
+            ? "Doses listed in EPI Vaccine Tracking appear here with the date given. Record stock used today in Medicines / Supplies Dispensed."
+            : "Items already administered or used during this visit. Inventory staff reconcile stock later in To Dispense — nothing is deducted here."}
         </p>
       </div>
 
@@ -86,9 +88,9 @@ export default function ServiceItemsUsedSection({
                     Date given: {row.usedAt}
                     {row.note ? ` · ${row.note}` : ""}
                   </div>
-                  <div className="mt-0.5 text-xs text-[#6B7280]">
+                  {!dispenseVaccinesAtVisit && <div className="mt-0.5 text-xs text-[#6B7280]">
                     Inventory reconciliation: Not yet recorded
-                  </div>
+                  </div>}
                 </li>
               ))}
             </ul>
