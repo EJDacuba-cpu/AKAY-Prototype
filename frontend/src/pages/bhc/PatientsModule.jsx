@@ -2,7 +2,7 @@ import { PatientRegistrationEntryLink as Link } from "../../components/features/
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { PanelRight, Plus, Users } from "lucide-react";
+import { LayoutGrid, List, PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import usePagedRows from "../../hooks/usePagedRows";
@@ -23,7 +23,7 @@ import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import Drawer from "../../components/common/drawer/Drawer";
 import { Button } from "../../components/ui/button";
 import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
-import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
+import PatientDirectoryCard, { OpenProfileLink } from "../../components/features/patients/PatientDirectoryCard";
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
 import useAccess from "../../hooks/useAccess";
@@ -76,6 +76,13 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const directoryView = params.get("layout") === "list" ? "list" : "tiles";
+
+  function changeDirectoryView(view) {
+    const next = new URLSearchParams(params);
+    next.set("layout", view);
+    setParams(next, { replace: true });
+  }
   const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
   const canTbEndorsements = role === "bhc" && access.can("clinical.history");
   // Deep links (legacy tab / case / endorsement) open the existing TB review UI.
@@ -149,6 +156,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     isRefreshing,
     filterOptions,
   } = usePatients(role);
+  const [searchInput, setSearchInput] = useState("");
   const resultsRef = useRef(null);
   // The details panel starts collapsed; a card click selects a patient and opens it.
   const [panel, setPanel] = useState({ selectedId: null, open: false });
@@ -309,10 +317,12 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   }
 
   function clearFilters() {
+    setSearchInput("");
     setFilters(DEFAULT_FILTERS);
   }
 
   function removeFilter(key) {
+    if (key === "search") setSearchInput("");
     const resetValues = {
       search: "",
       barangay: "All Barangays",
@@ -413,11 +423,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                 <SearchFilterCluster
                   search={
                     <SearchField
-                      value={filters.search}
-                      onChange={(value) =>
-                        setFilters((prev) => ({ ...prev, search: value }))
-                      }
-                      placeholder="Search name, ID, or contact number..."
+                      value={searchInput}
+                      onChange={setSearchInput}
+                      onSubmit={(search) => setFilters((prev) => ({ ...prev, search }))}
+                      onClear={() => {
+                        setSearchInput("");
+                        setFilters((prev) => ({ ...prev, search: "" }));
+                      }}
+                      placeholder="Search name, ID, or contact (Enter)"
                       label="Search patients"
                     />
                   }
@@ -449,6 +462,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     />
                   }
                 />
+                <PatientViewSwitch view={directoryView} onChange={changeDirectoryView} />
                 {isDesktop ? (
                   <Button
                     variant="secondary"
@@ -496,6 +510,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
               )}
               {!showInitialLoading && !showHandoffs && (
                 <PatientDirectory
+                  view={directoryView}
                   patients={visiblePatients}
                   canRegister={canRegister}
                   hasAnyFilter={hasAnyFilter}
@@ -663,6 +678,7 @@ function MonitoringRequestTable({ rows, filters, onOpen }) {
 }
 
 function PatientDirectory({
+  view = "tiles",
   patients,
   canRegister,
   hasAnyFilter,
@@ -713,7 +729,9 @@ function PatientDirectory({
           />
         ) : (
           <>
-            <div className="clinical-directory__grid">
+            {view === "list" ? (
+              <PatientDirectoryList patients={patients} basePath={basePath} role={role} onSelect={onSelectPatient} selectedPatientId={selectedPatientId} />
+            ) : <div className="clinical-directory__grid">
               {patients.map((patient) => (
                 <PatientDirectoryCard
                   key={patient.id || patient.patientId}
@@ -724,7 +742,7 @@ function PatientDirectory({
                   selected={getPatientKey(patient) === selectedPatientId}
                 />
               ))}
-            </div>
+            </div>}
 
             {hasMorePatients && (
               <div className="flex justify-center py-3">
@@ -739,6 +757,64 @@ function PatientDirectory({
         )}
       </div>
     </section>
+  );
+}
+
+function PatientViewSwitch({ view, onChange }) {
+  return (
+    <div role="group" aria-label="Patient view" className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-neutral-100 p-1">
+      {[{ value: "list", label: "List", Icon: List }, { value: "tiles", label: "Tiles", Icon: LayoutGrid }].map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-label={`${label} view`}
+          aria-pressed={view === value}
+          onClick={() => onChange(value)}
+          className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400 ${view === value ? "bg-white text-ink-800 shadow-xs" : "text-neutral-600 hover:bg-white/60 hover:text-ink-800"}`}
+        >
+          <Icon size={14} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PatientDirectoryList({ patients, basePath, role, onSelect, selectedPatientId }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <FixedTable minWidth="min-w-[760px]" lockHeight={false}>
+        <caption className="sr-only">Registered patients</caption>
+        <thead className="bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+          <tr>
+            {["Patient", "Patient ID", "Age / Sex", "Barangay", "Contact", "Profile"].map((label) => <th key={label} scope="col" className="px-3">{label}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-100">
+          {patients.map((patient) => {
+            const key = getPatientKey(patient);
+            const name = formatPatientName(patient, "Unnamed Patient", { middleInitial: true });
+            const ageSex = patient.ageSex || [patient.age, formatDisplayValue(patient.sex, "")]
+              .filter((part) => part !== undefined && part !== null && part !== "").join(" / ");
+            const barangay = patient.barangay || patient.patientBarangay;
+            return (
+              <tr key={key} className={`h-14 text-sm text-ink-800 hover:bg-neutral-50 ${key === selectedPatientId ? "bg-neutral-50" : ""}`}>
+                <td className="max-w-64 px-3">
+                  <button type="button" onClick={() => onSelect(key)} aria-pressed={key === selectedPatientId} className="block max-w-full truncate rounded-sm text-left font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ink-400" title={name}>{name}</button>
+                </td>
+                <td className="px-3 text-xs tabular-nums">{formatDisplayValue(patient.patientId || patient.id)}</td>
+                <td className="px-3 text-xs">{formatDisplayValue(ageSex)}</td>
+                <td className="max-w-48 truncate px-3 text-xs" title={barangay || ""}>{formatDisplayValue(barangay)}</td>
+                <td className="px-3 text-xs tabular-nums">{formatDisplayValue(patient.contact || patient.contactNumber || patient.phone || patient.mobileNumber)}</td>
+                <td className="px-3">
+                  <OpenProfileLink to={`${basePath}/patients/${key}`} patientId={key} role={role} aria-label={`Open profile for ${name}`} className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 px-3 text-xs font-medium text-neutral-700 outline-none hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-ink-400">Open profile</OpenProfileLink>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </FixedTable>
+    </div>
   );
 }
 

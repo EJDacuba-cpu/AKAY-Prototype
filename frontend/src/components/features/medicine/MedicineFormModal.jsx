@@ -9,6 +9,7 @@ import { DatePickerField } from "../../common/forms/DatePickerField";
 import { Button } from "../../ui/button";
 import {
   computeMedicineStatus,
+  DEFAULT_MEDICINE_UNIT,
   MEDICINE_CATEGORIES,
   MEDICINE_ITEM_TYPES,
   MEDICINE_UNITS,
@@ -25,7 +26,7 @@ const DEFAULT_FORM = {
   name: "",
   category: "General Medicines",
   quantity: "",
-  unit: "pcs",
+  unit: DEFAULT_MEDICINE_UNIT,
   lowStockThreshold: "10",
   expiryDate: "",
   itemType: "medicine",
@@ -226,6 +227,9 @@ export default function MedicineFormModal({
             <Field label="Item Type">
                 <select aria-label="Item Type" value={form.itemType} className={inputClass} disabled={submitting}
                   onChange={e => setForm(current => ({ ...current, itemType: e.target.value, expiryNotApplicable: false }))}>
+                  {mode === "edit" && form.itemType === "vaccine" && (
+                    <option value="vaccine" disabled>Vaccine (legacy)</option>
+                  )}
                   {MEDICINE_ITEM_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </Field>

@@ -364,7 +364,7 @@ export function buildIncomingReferralMetrics(referrals, period) {
       "label",
       "value",
       "Referrals",
-      CHART_COLORS.info,
+      CHART_COLORS.brand,
     ),
   ];
 
@@ -536,7 +536,7 @@ export function buildRhuReport({
     xKey: "label",
     valueKey: "value",
     config: {
-      value: { label: "Count", color: CHART_COLORS.ink },
+      value: { label: "Count", color: CHART_COLORS.brand },
     },
   };
 

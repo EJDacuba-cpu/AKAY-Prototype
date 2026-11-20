@@ -191,9 +191,9 @@ for (const role of ['rhu', 'bhc']) {
     const html = render({ role, mode: 'add', item: null });
     const selects = [...html.matchAll(/<select\b[^>]*>(.*?)<\/select>/g)].map(match => [...match[1].matchAll(/<option\b[^>]*>(.*?)<\/option>/g)].map(option => option[1].replaceAll('&amp;', '&')));
     assert.deepEqual(selects, [
-      ['General Medicines', 'TB Medicines', 'Vaccines', 'Vitamins & Supplements', 'Family Planning', 'Maternal Care Supplies', 'Child Care'],
-      ['Medicine', 'Vaccine', 'Medical Supply'],
-      ['tablets', 'capsules', 'vials', 'bottles', 'pcs', 'sachets', 'ampoules', 'tube'],
+      ['General Medicines', 'TB Medicines', 'Vaccines', 'Vitamins & Supplements', 'Family Planning'],
+      ['Medicine', 'Medical Supply'],
+      ['tablets', 'capsules', 'vials', 'bottles', 'boxes', 'sachets', 'ampoules', 'tube'],
     ]);
   });
 }

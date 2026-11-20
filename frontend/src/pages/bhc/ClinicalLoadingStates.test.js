@@ -31,8 +31,8 @@ async function renderError(Component, route, path, key) {
   return html;
 }
 
-function renderDirectory(client, path) {
-  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MemoryRouter, { initialEntries: [path] }, createElement(NotificationProvider, null, createElement(PatientsModule)))));
+function renderDirectory(client, path, role = 'bhc') {
+  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MemoryRouter, { initialEntries: [path] }, createElement(NotificationProvider, null, createElement(PatientsModule, { role, basePath: `/${role}` })))));
 }
 
 test('initial referral connection error provides recovery instead of a false not-found diagnosis', async () => {
@@ -100,3 +100,29 @@ test('successful empty patient directory is preserved on a background refresh fa
   assert.match(html, /Showing the last list that loaded/);
   assert.doesNotMatch(html, /Loading patients/);
 });
+
+for (const role of ['bhc', 'rhu']) {
+  for (const layout of ['list', 'tiles']) {
+    test(`${role} patient directory renders ${layout} with the matching profile route`, () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+      client.setQueryData([...queryKeys.patients(role), 'directory', emptyDirectoryFilters], {
+        ...emptyDirectoryPage,
+        pages: [{ ...emptyDirectoryPage.pages[0], items: [{ id: 42, patientId: 'P-0042', firstName: 'Test', lastName: 'Patient', ageSex: '32 / Female', barangay: 'Test Barangay', contact: '09123456789' }], meta: { current_page: 1, last_page: 1, total: 1 } }],
+      });
+      const html = renderDirectory(client, `/${role}/patients?layout=${layout}`, role);
+      client.clear();
+      assert.match(html, new RegExp(`aria-label="${layout === 'list' ? 'List' : 'Tiles'} view" aria-pressed="true"`));
+      assert.match(html, new RegExp(`href="/${role}/patients/42"`));
+      assert.match(html, /P-0042/);
+      assert.match(html, /Test Barangay/);
+      assert.match(html, /09123456789/);
+      if (layout === 'list') {
+        assert.equal((html.match(/<table\b/g) || []).length, 1);
+        assert.doesNotMatch(html, /class="clinical-directory__grid"/);
+      } else {
+        assert.match(html, /class="clinical-directory__grid"/);
+        assert.doesNotMatch(html, /<table\b/);
+      }
+    });
+  }
+}

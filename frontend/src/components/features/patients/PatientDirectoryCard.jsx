@@ -113,7 +113,7 @@ function getPatientDisplayId(patient) {
  * (new-tab and copy-link still work); only a plain left click is intercepted.
  * Shared open-gate: only one profile may open at a time across the directory.
  */
-function OpenProfileLink({ to, patientId, role, className, onClick, children, ...linkProps }) {
+export function OpenProfileLink({ to, patientId, role, className, onClick, children, ...linkProps }) {
   const {
     openProfile,
     isOpeningPatient,

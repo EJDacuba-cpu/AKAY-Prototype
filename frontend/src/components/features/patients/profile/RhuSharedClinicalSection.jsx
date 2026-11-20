@@ -37,7 +37,7 @@ export default function RhuSharedClinicalSection({
         ) : (
           <ul className="space-y-4">
             {entries.map((entry) => (
-              <li key={entry.handoff_id} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+              <li key={entry.handoff_id} className="@container overflow-hidden rounded-lg border border-neutral-200 bg-white">
                 <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-ink-900">
@@ -57,56 +57,57 @@ export default function RhuSharedClinicalSection({
                   </p>
                 </div>
                 <div className="space-y-3 p-3">
-                  <dl className="grid gap-3 sm:grid-cols-2">
+                  <dl className="grid gap-x-5 gap-y-3 @md:grid-cols-2 @3xl:grid-cols-3">
                     <Detail label="Confirmed condition" value={entry.condition?.name} />
                     <Detail label="Condition status" value={formatDisplayValue(entry.condition?.status)} />
-                    <Detail label="Monitoring recommendation" value={entry.recommendation} wide />
-                    <Detail label="Chief complaint" value={entry.chief_complaint} wide />
-                    <Detail label="Clinical assessment" value={entry.clinical_assessment} wide />
+                    <Detail label="Monitoring recommendation" value={entry.recommendation} />
+                    <Detail label="Chief complaint" value={entry.chief_complaint} />
+                    <Detail label="Clinical assessment" value={entry.clinical_assessment} />
+                    {entry.follow_up_recommendations && (
+                      <Detail label="Follow-up recommendations" value={entry.follow_up_recommendations} />
+                    )}
                   </dl>
 
                   {entry.vital_signs && Object.keys(entry.vital_signs).length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Vital signs</h3>
-                      <p className="mt-1 text-sm text-neutral-700">
+                      <p className="mt-1 wrap-anywhere text-sm text-neutral-700">
                         {summarizeVitals(entry.vital_signs)}
                       </p>
                     </div>
                   )}
 
-                  <div>
-                    <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                      Shared laboratory evidence
-                    </h3>
-                    <LaboratoryEvidenceList
-                      entries={entry.laboratory_evidence || []}
-                      emptyMessage="No laboratory evidence shared with this handoff."
-                    />
-                  </div>
+                  <div className="grid gap-x-5 gap-y-3 border-t border-neutral-200 pt-3 @md:grid-cols-2">
+                    <div className="min-w-0 wrap-anywhere">
+                      <h3 className="mb-1 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                        Shared laboratory evidence
+                      </h3>
+                      <LaboratoryEvidenceList
+                        entries={entry.laboratory_evidence || []}
+                        emptyMessage="No laboratory evidence shared with this handoff."
+                      />
+                    </div>
 
-                  <div>
-                    <h3 className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                      Prescription summary (informational)
-                    </h3>
-                    {(entry.prescriptions || []).length === 0 ? (
-                      <p className="mt-1 text-sm text-neutral-600">None shared.</p>
-                    ) : (
-                      <ul className="mt-2 space-y-1.5">
-                        {entry.prescriptions.map((rx, index) => (
-                          <li key={`${entry.handoff_id}-rx-${index}`} className="text-sm text-ink-900">
-                            {rx.line || rx.medicineName || "Prescription"}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="mt-1 text-xs text-neutral-600">
-                      RHU prescriptions remain informational. Dispense only from BHC consultation inventory.
-                    </p>
+                    <div className="min-w-0 wrap-anywhere">
+                      <h3 className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                        Prescription summary (informational)
+                      </h3>
+                      {(entry.prescriptions || []).length === 0 ? (
+                        <p className="mt-1 text-sm text-neutral-600">None shared.</p>
+                      ) : (
+                        <ul className="mt-2 space-y-1.5">
+                          {entry.prescriptions.map((rx, index) => (
+                            <li key={`${entry.handoff_id}-rx-${index}`} className="text-sm text-ink-900">
+                              {rx.line || rx.medicineName || "Prescription"}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="mt-1 text-xs text-neutral-600">
+                        RHU prescriptions remain informational. Dispense only from BHC consultation inventory.
+                      </p>
+                    </div>
                   </div>
-
-                  {entry.follow_up_recommendations && (
-                    <Detail label="Follow-up recommendations" value={entry.follow_up_recommendations} wide />
-                  )}
                 </div>
               </li>
             ))}
@@ -117,11 +118,11 @@ export default function RhuSharedClinicalSection({
   );
 }
 
-function Detail({ label, value, wide = false }) {
+function Detail({ label, value }) {
   return (
-    <div className={wide ? "sm:col-span-2" : undefined}>
+    <div className="min-w-0">
       <dt className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">{label}</dt>
-      <dd className="mt-1 whitespace-pre-wrap text-sm text-ink-900">{value || "—"}</dd>
+      <dd className="mt-1 wrap-anywhere whitespace-pre-wrap text-sm text-ink-900">{value || "—"}</dd>
     </div>
   );
 }

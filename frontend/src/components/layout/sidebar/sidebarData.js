@@ -6,6 +6,7 @@ import {
   FileText,
   House,
   LayoutGrid,
+  Stethoscope,
   Users,
 } from "lucide-react";
 import { REPORT_SIDEBAR_ITEMS } from "../../../utils/reportNavigation.js";
@@ -148,7 +149,7 @@ export const menuByRole = {
         {
           label: "Doctor Availability",
           path: "/rhu/doctor-availability",
-          icon: CalendarDays,
+          icon: Stethoscope,
         },
       ],
     },
