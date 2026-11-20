@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { BarChart3 } from "lucide-react";
 
@@ -14,7 +14,7 @@ import {
 } from "../../../utils/bhcDashboard";
 import { cn } from "../../../lib/utils";
 
-const CHART_HEIGHT = "h-[180px] min-h-[180px] flex-1";
+const CHART_HEIGHT = "h-[180px]";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const CHART_CONFIG = {
   count: { label: "Consultations", color: "var(--color-ink-700)" },
@@ -24,7 +24,6 @@ export default function ConsultationActivityChart({ series = [], className }) {
   const [period, setPeriod] = useState("7");
   const data = useMemo(() => sliceActivitySeries(series, period), [series, period]);
   const animate = !usePrefersReducedMotion();
-  const gradientId = `consult-fill-${useId().replace(/:/g, "")}`;
 
   return (
     <Card className={cn("bhc-consultation-chart flex flex-col rounded-card shadow-card", className)}>
@@ -40,16 +39,10 @@ export default function ConsultationActivityChart({ series = [], className }) {
           options={ACTIVITY_PERIODS}
         />
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
+      <CardContent>
         {chartHasValues(data) ? (
-          <ChartContainer config={CHART_CONFIG} className={cn("aspect-auto w-full", CHART_HEIGHT)}>
+          <ChartContainer config={CHART_CONFIG} className={cn("block aspect-auto w-full", CHART_HEIGHT)}>
             <AreaChart data={data} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id={`${gradientId}-line`} x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="var(--dashboard-chart-start, var(--color-count))" />
-                  <stop offset="100%" stopColor="var(--dashboard-chart-end, var(--color-count))" />
-                </linearGradient>
-              </defs>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
@@ -72,7 +65,7 @@ export default function ConsultationActivityChart({ series = [], className }) {
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke={`url(#${gradientId}-line)`}
+                stroke="var(--color-count)"
                 fill="none"
                 strokeWidth={2}
                 isAnimationActive={animate}

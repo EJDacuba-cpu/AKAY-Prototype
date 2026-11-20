@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bar, BarChart, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { Card } from "../../../ui/card";
 import { Button } from "../../../ui/button";
@@ -45,6 +45,9 @@ function ChartLegend({ items }) {
         <li key={item.label} className="inline-flex items-center gap-1.5">
           <span className="inline-block size-2.5 rounded-full" style={{ background: item.color }} aria-hidden="true" />
           {item.label}
+          {item.value != null && (
+            <span className="font-semibold tabular-nums text-neutral-900">{item.value}</span>
+          )}
         </li>
       ))}
     </ul>
@@ -73,7 +76,7 @@ function TrendWindowControls({ value, onChange }) {
   );
 }
 
-function TrendChart({ config, data, children, yUnit = "", labelFormatter, formatter }) {
+function TrendChart({ config, data, children, yUnit = "", labelFormatter, formatter, xScale }) {
   return (
     <ChartContainer config={config} className="aspect-auto h-[220px] w-full min-w-0">
       <LineChart data={data} margin={{ left: 8, right: 12, top: 8, bottom: 0 }}>
@@ -84,6 +87,7 @@ function TrendChart({ config, data, children, yUnit = "", labelFormatter, format
           tickMargin={8}
           minTickGap={18}
           interval="preserveStartEnd"
+          scale={xScale}
         />
         <YAxis
           tickLine={false}
@@ -168,15 +172,35 @@ function MeasurementChart({ entry, window }) {
     if (!points.length) {
       return <ChartEmpty title="No blood pressure history yet" detail="Saved systolic and diastolic readings will appear here. Visits without BP stay off the chart." />;
     }
+    const singleVisit = points.length === 1 ? points[0] : null;
     return (
       <div>
-        <ChartLegend items={[
-          { label: "Systolic", color: "var(--color-ink-700)" },
-          { label: "Diastolic", color: "var(--color-brand-700, #B70011)" },
-        ]} />
-        <TrendChart config={BP_CONFIG} data={points} yUnit="mmHg" labelFormatter={bpTooltipLabel} formatter={bpTooltipFormatter}>
-          <Line type="monotone" dataKey="systolic" name="Systolic" stroke="var(--color-systolic)" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-          <Line type="monotone" dataKey="diastolic" name="Diastolic" stroke="var(--color-diastolic)" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+        <ChartLegend items={Object.entries(BP_CONFIG).map(([key, item]) => ({
+          ...item,
+          value: singleVisit && bpTooltipFormatter(singleVisit[key]),
+        }))} />
+        <TrendChart
+          config={BP_CONFIG}
+          data={points}
+          yUnit="mmHg"
+          labelFormatter={bpTooltipLabel}
+          formatter={bpTooltipFormatter}
+          xScale="point"
+        >
+          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+          {Object.entries(BP_CONFIG).map(([key, { label, color }]) => (
+            <Line
+              key={key}
+              type="linear"
+              dataKey={key}
+              name={label}
+              stroke={color}
+              strokeWidth={2}
+              dot={{ r: 4, fill: color, stroke: "white", strokeWidth: 1.5 }}
+              isAnimationActive={false}
+              connectNulls={false}
+            />
+          ))}
         </TrendChart>
       </div>
     );

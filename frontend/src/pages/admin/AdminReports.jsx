@@ -3,21 +3,13 @@ import "./admin-report-metrics.css";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, FileText, Printer } from "lucide-react";
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Legend,
-  LinearScale,
-  Tooltip,
-} from "chart.js";
-import { Bar, Doughnut } from "react-chartjs-2";
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import ConnectionErrorState from "../../components/common/ConnectionErrorState";
 import { Button } from "../../components/ui/button";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "../../components/ui/chart";
 import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import { getPasswordInviteSummary } from "../../services/accountInviteService";
 import { loadAdminAccountAnalytics } from "../../services/adminReportsService";
@@ -30,19 +22,19 @@ import {
 } from "../../utils/adminAccountReporting";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
-
 const ANALYTICS_QUERY_KEY = ["admin-reports", "account-analytics"];
 const SUMMARY_QUERY_KEY = ["admin-reports", "password-invite-summary"];
 
 const ROLE_COLORS = {
-  admin: "#7F1D1D",
-  bhc: "#DC2626",
-  rhu: "#FCA5A5",
+  admin: "var(--color-brand-900)",
+  bhc: "var(--color-brand-600)",
+  rhu: "var(--color-brand-300)",
 };
 
-const ACTIVE_COLOR = "#B91C1C";
-const INACTIVE_COLOR = "#CBD5E1";
+const STATUS_CHART_CONFIG = {
+  active: { label: "Active", color: "var(--color-brand-600)" },
+  inactive: { label: "Inactive", color: "var(--color-brand-300)" },
+};
 
 const PRINT_CSS = `
   @page { size: A4 portrait; margin: 14mm; }
@@ -92,48 +84,6 @@ const PRINT_CSS = `
     #admin-account-report-print tr { break-inside: avoid; page-break-inside: avoid; }
   }
 `;
-
-const chartLegend = {
-  position: "bottom",
-  onClick: () => {},
-  labels: {
-    boxWidth: 10,
-    boxHeight: 10,
-    color: "#334155",
-    font: { size: 11 },
-    padding: 14,
-    usePointStyle: true,
-    pointStyle: "circle",
-  },
-};
-
-const barOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: false,
-  plugins: { legend: chartLegend },
-  scales: {
-    x: {
-      grid: { display: false },
-      ticks: { color: "#334155", font: { size: 11 } },
-      border: { display: false },
-    },
-    y: {
-      beginAtZero: true,
-      ticks: { precision: 0, color: "#64748b", font: { size: 11 } },
-      grid: { color: "rgba(226, 232, 240, 0.9)" },
-      border: { display: false },
-    },
-  },
-};
-
-const doughnutOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: false,
-  cutout: "64%",
-  plugins: { legend: chartLegend },
-};
 
 function formatCount(value) {
   return Number(value).toLocaleString("en-US");
@@ -241,17 +191,11 @@ function RolePanel({ report }) {
   const chartLabel = `${report.roleChartTitle}. ${report.roleDistribution
     .map((row) => `${row.label} ${formatCount(row.total)}`)
     .join(", ")}`;
-  const data = {
-    labels: report.roleDistribution.map((row) => row.label),
-    datasets: [
-      {
-        data: report.roleDistribution.map((row) => row.total),
-        backgroundColor: report.roleDistribution.map((row) => ROLE_COLORS[row.role] || ACTIVE_COLOR),
-        borderColor: "#ffffff",
-        borderWidth: 2,
-      },
-    ],
-  };
+  const data = report.roleDistribution.map((row) => ({
+    ...row,
+    fill: ROLE_COLORS[row.role] || STATUS_CHART_CONFIG.active.color,
+  }));
+  const config = Object.fromEntries(data.map(({ role, label, fill }) => [role, { label, color: fill }]));
 
   return (
     <section className="flex h-full flex-col rounded-card border border-neutral-200 bg-white p-4 shadow-card lg:col-span-5">
@@ -274,16 +218,30 @@ function RolePanel({ report }) {
       <div className="mt-4 flex-1">
         {report.emptyKind === "none" ? (
           <>
-            <div className="relative h-52" role="img" aria-label={chartLabel}>
-              <Doughnut data={data} options={doughnutOptions} />
+            <div role="img" aria-label={chartLabel}>
+              <ChartContainer config={config} className="block aspect-auto h-[280px] w-full">
+                <PieChart>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="role" formatter={formatCount} />} />
+                  <Pie
+                    data={data}
+                    dataKey="total"
+                    nameKey="role"
+                    innerRadius="58%"
+                    outerRadius="86%"
+                    stroke="white"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  />
+                </PieChart>
+              </ChartContainer>
             </div>
             <ul className="mt-2 divide-y divide-neutral-100">
-              {report.roleDistribution.map((row) => (
+              {data.map((row) => (
                 <li key={row.role} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <span className="flex items-center gap-2 text-neutral-700">
                     <span
                       className="size-2.5 rounded-full"
-                      style={{ backgroundColor: ROLE_COLORS[row.role] || ACTIVE_COLOR }}
+                      style={{ backgroundColor: row.fill }}
                       aria-hidden="true"
                     />
                     {row.label}
@@ -317,41 +275,43 @@ function StatusPanel({ report }) {
   const chartLabel = report.statusByRole
     .map((row) => `${row.label}: ${formatCount(row.active)} active, ${formatCount(row.inactive)} inactive`)
     .join(". ");
-  const data = {
-    labels: report.statusByRole.map((row) => row.label),
-    datasets: [
-      {
-        label: "Active",
-        data: report.statusByRole.map((row) => row.active),
-        backgroundColor: ACTIVE_COLOR,
-        borderRadius: 4,
-        maxBarThickness: 28,
-      },
-      {
-        label: "Inactive",
-        data: report.statusByRole.map((row) => row.inactive),
-        backgroundColor: INACTIVE_COLOR,
-        borderRadius: 4,
-        maxBarThickness: 28,
-      },
-    ],
-  };
-
   return (
-    <section className="rounded-card border border-neutral-200 bg-white p-4 shadow-card">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{report.filterLabel}</p>
-                  <h2 className="mt-1 text-sm font-semibold text-neutral-900">Active and inactive by role</h2>
-                  <div className="mt-4 grid grid-cols-2 gap-3"><ReportMetricCard label="Total Active" value={report.statusTotals.active} /><ReportMetricCard label="Total Inactive" value={report.statusTotals.inactive} /></div>
-              <div className="mt-4">
-                    {report.emptyKind === "none" ? (
-                      <div className="relative h-52" role="img" aria-label={`Active and inactive by role. ${chartLabel}`}>
-                        <Bar data={data} options={barOptions} />
-                      </div>
-                    ) : (
-                      <EmptyNotice report={report} />
-                    )}
-                  </div>
-                </section>
+    <section className="min-w-0 rounded-card border border-neutral-200 bg-white p-4 shadow-card lg:col-span-7">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{report.filterLabel}</p>
+      <h2 className="mt-1 text-sm font-semibold text-neutral-900">Active and inactive by role</h2>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <ReportMetricCard label="Total Active" value={report.statusTotals.active} />
+        <ReportMetricCard label="Total Inactive" value={report.statusTotals.inactive} />
+      </div>
+      <div className="mt-4">
+        {report.emptyKind === "none" ? (
+          <div role="img" aria-label={`Active and inactive by role. ${chartLabel}`}>
+            <ChartContainer config={STATUS_CHART_CONFIG} className="block aspect-auto h-[280px] w-full">
+              <BarChart data={report.statusByRole} margin={{ top: 8, right: 8, bottom: 8 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
+                <ChartTooltip content={<ChartTooltipContent formatter={formatCount} />} />
+                <ChartLegend content={<ChartLegendContent />} />
+                {Object.entries(STATUS_CHART_CONFIG).map(([key, { label }]) => (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    name={label}
+                    fill={`var(--color-${key})`}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            </ChartContainer>
+          </div>
+        ) : (
+          <EmptyNotice report={report} />
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -698,8 +658,8 @@ export default function AdminReports() {
 
             <div className="no-print grid grid-cols-1 gap-4 lg:grid-cols-12">
               <RolePanel report={report} />
-              <div className="flex flex-col gap-4 lg:col-span-7">
-                <StatusPanel report={report} />
+              <StatusPanel report={report} />
+              <div className="min-w-0 lg:col-span-12">
                 <AccessPanel
                   access={report.accessRequests}
                   pending={summaryPending}

@@ -85,8 +85,9 @@ function Info({ fields = 6, columns = "sm:grid-cols-2 lg:grid-cols-3", narrative
   </section>;
 }
 
-function Chart({ height = "h-56" }) {
-  return <section className={`${sheet} p-4`}><div className="flex justify-between gap-4"><Block className="h-4 w-40" /><Block className="w-16" /></div>
+function Chart({ height = "h-56", showDescription = false }) {
+  return <section className={`${sheet} p-4`}><div className="flex justify-between gap-4"><Block className="h-4 w-40" />{!showDescription && <Block className="w-16" />}</div>
+    {showDescription && <Block className="mt-2 w-80" />}
     <div className={`mt-5 flex items-end gap-3 border-b border-l border-neutral-200 px-4 ${height}`}>{[45, 68, 54, 80, 65, 88, 72].map((height, i) => <Block key={i} className="flex-1 rounded-t-md rounded-b-none" style={{ height }} />)}</div>
     <div className="mt-3 flex justify-between gap-2">{repeat(4, i => <Block key={i} className="h-2 w-12" />)}</div>
   </section>;
@@ -166,12 +167,62 @@ function MedicineDetails({ message }) {
 
 export function ReportsSkeleton({ message = "Loading reports...", category = "overview", role = "bhc", cardCount = 4, chartCount = 2 }) {
   const overview = role === "rhu" && category === "overview";
-  return <Root message={message}><Heading actions={0} />
-    <div className="flex flex-wrap items-end justify-end gap-2">{repeat(3, i => <Action key={i} small />)}<Block className="h-9 w-32 rounded-full" /><Block className="h-9 w-32 rounded-full" /><Action small /><Action small /></div>
-    {overview ? <div className="grid gap-4 md:grid-cols-12"><div className="md:col-span-3"><Kpis count={2} className="grid-cols-2 md:grid-cols-1" /></div><div className="md:col-span-6"><Chart /></div><div className="md:col-span-3"><Kpis count={2} className="grid-cols-2 md:grid-cols-1" /></div></div> : <Kpis count={cardCount} className="sm:grid-cols-2 xl:grid-cols-4" />}
-    {chartCount > 0 && <div className="grid gap-4 md:grid-cols-12">{repeat(chartCount, i => <div key={i} className={overview ? (i === 0 ? "md:col-span-5" : "md:col-span-7") : i > 1 ? "md:col-span-12" : i === 0 ? "md:col-span-8" : "md:col-span-4"}><Chart /></div>)}</div>}
-    <TableBody columns={3} rows={5} minWidth={640} mobileCards={false} footer={false} />
-  </Root>;
+  const chartSpans = ["lg:col-span-8", "lg:col-span-4", "lg:col-span-12"];
+  return (
+    <Root message={message}>
+      <div className="flex flex-col gap-5">
+        <div data-slot="skeleton-heading" className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <Block className="h-5 w-28" />
+            <Block className="h-4 w-64" />
+            {category === "nutrition" && <Block className="w-96" />}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Block className="h-8 w-20 rounded-full" />
+            <Block className="h-8 w-28 rounded-full" />
+            <Block className="h-8 w-20 rounded-full" />
+          </div>
+        </div>
+        {overview ? (
+          <div className="grid gap-3 md:grid-cols-12">
+            <div className="md:col-span-3"><Kpis count={2} className="grid-cols-2 md:grid-cols-1" /></div>
+            <div className="md:col-span-6"><Chart /></div>
+            <div className="md:col-span-3"><Kpis count={2} className="grid-cols-2 md:grid-cols-1" /></div>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {repeat(cardCount, i => (
+              <div key={i} className={`${sheet} p-4`}>
+                <Block className="h-3 w-28" />
+                <Block className="mt-1 h-8 w-12" />
+                <Block className="mt-1 h-4 w-36" />
+              </div>
+            ))}
+          </div>
+        )}
+        {chartCount > 0 && (
+          <div className={overview ? "grid gap-3 md:grid-cols-12" : "grid gap-4 lg:grid-cols-12"}>
+            {repeat(chartCount, i => (
+              <div key={i} data-slot="report-skeleton-chart" className={overview
+                ? (i === 0 ? "md:col-span-5" : "md:col-span-7")
+                : (chartCount === 1 ? "lg:col-span-12" : chartSpans[i] ?? "lg:col-span-12")}>
+                <Chart height={overview ? "h-44" : "h-[248px]"} showDescription={!overview} />
+              </div>
+            ))}
+          </div>
+        )}
+        <section className={sheet}>
+          <div className="space-y-2 p-5">
+            <Block className="h-4 w-36" />
+            <Block className="w-64" />
+          </div>
+          <div className="px-5 pb-5">
+            <TableBody columns={2} rows={5} minWidth={0} mobileCards={false} footer={false} />
+          </div>
+        </section>
+      </div>
+    </Root>
+  );
 }
 
 function AdminReports({ message }) {

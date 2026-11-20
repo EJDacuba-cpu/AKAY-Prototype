@@ -85,7 +85,15 @@ test("RHU overview has its trend arrangement and report summary is not paginated
   const html = render("reports", { options: { role: "rhu", category: "overview" } });
   assert.match(html, /md:col-span-6/);
   assert.match(html, /md:col-span-5/);
-  assert.equal((html.match(/<th\b/g) || []).length, 3);
+  assert.equal((html.match(/<th\b/g) || []).length, 2);
+});
+
+test("RHU Referrals skeleton gives the single chart the full report width", () => {
+  const html = render("reports", { options: { role: "rhu", category: "referrals", cardCount: 3, chartCount: 1 } });
+  assert.match(html, /data-slot="report-skeleton-chart" class="lg:col-span-12"/);
+  assert.doesNotMatch(html, /col-span-8/);
+  const header = html.slice(html.indexOf('data-slot="skeleton-heading"'), html.indexOf('xl:grid-cols-4'));
+  assert.equal((header.match(/rounded-full/g) || []).length, 3);
 });
 
 test("loading area hides and inerts real actions rather than covering keyboard-focusable controls", () => {

@@ -29,7 +29,7 @@ export default function BhcReportCharts({ charts = [], className }) {
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <ChartCard chart={primary} className="lg:col-span-8" />
+        <ChartCard chart={primary} className={secondary ? "lg:col-span-8" : "lg:col-span-12"} />
         <ChartCard chart={secondary} className="lg:col-span-4" />
       </div>
       {tertiary ? <ChartCard chart={tertiary} className="w-full" /> : null}
@@ -52,7 +52,7 @@ function ChartCard({ chart, className }) {
         {chart.kind === "radial" ? (
           <RadialEnrollmentChart chart={chart} animate={animate} />
         ) : hasChartValues(chart) ? (
-          <ChartContainer config={chart.config} className={cn("aspect-auto w-full", CHART_HEIGHT)}>
+          <ChartContainer config={chart.config} className={cn("block aspect-auto w-full shrink-0", CHART_HEIGHT)}>
             {chart.kind === "bar" ? (
               <BarChart data={chart.data} margin={{ left: 4, right: 8, top: 8, bottom: 8 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
