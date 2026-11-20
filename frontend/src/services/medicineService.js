@@ -5,14 +5,14 @@ import { expiryGroups } from "../utils/medicineExpiryGroups";
 
 export const MEDICINE_CATEGORIES = [
   "General Medicines", "TB Medicines", "Vaccines", "Vitamins & Supplements",
-  "Family Planning", "Maternal Care Supplies", "Child Care",
+  "Family Planning",
 ];
 export const MEDICINE_ITEM_TYPES = [
   { value: "medicine", label: "Medicine" },
-  { value: "vaccine", label: "Vaccine" },
   { value: "health_supply", label: "Medical Supply" },
 ];
-export const MEDICINE_UNITS = ["tablets", "capsules", "vials", "bottles", "pcs", "sachets", "ampoules", "tube"];
+export const DEFAULT_MEDICINE_UNIT = "boxes";
+export const MEDICINE_UNITS = ["tablets", "capsules", "vials", "bottles", DEFAULT_MEDICINE_UNIT, "sachets", "ampoules", "tube"];
 
 const RHU_UPDATE_EVENT = "akay_rhu_medicines_updated";
 const BHC_UPDATE_EVENT = "akay_bhc_medicines_updated";
@@ -88,7 +88,7 @@ function toCreatePayload(item = {}) {
     description: item.description || item.notes || null,
     quantity: parseQuantity(item.quantity),
     low_stock_threshold: parseQuantity(item.lowStockThreshold ?? item.low_stock_threshold ?? 10),
-    unit: item.unit || "pcs",
+    unit: item.unit || DEFAULT_MEDICINE_UNIT,
     item_type: item.itemType || item.item_type || "medicine",
     expiry_not_applicable: Boolean(item.expiryNotApplicable || item.expiry_not_applicable),
     expiration_date: item.expiryDate || item.expirationDate || item.expiration_date || null,
